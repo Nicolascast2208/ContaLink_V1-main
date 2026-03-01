@@ -1,0 +1,12 @@
+google-cloud-vision
+google-cloud-firestore
+google-cloud-storage
+requests
+lxml
+rut-chile
+urllib3<2.0.0
+flask==3.0.3
+gunicorn==21.2.0
+firebase-admin==6.5.0
+PyMuPDF==1.23.8
+Pillow==10.0.0
