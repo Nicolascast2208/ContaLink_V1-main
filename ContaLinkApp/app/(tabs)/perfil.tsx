@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert, ScrollView, KeyboardAvoidingView, Platform
+  ActivityIndicator, Alert, ScrollView, KeyboardAvoidingView, Platform, Share
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import Purchases from 'react-native-purchases';
+import RevenueCatUI from 'react-native-purchases-ui';
 
 import { auth, db } from '../../utils/firebaseconfig';
 // Importamos el estilo global para el contenedor
@@ -20,6 +22,11 @@ export default function PerfilScreen() {
   const [nombre, setNombre] = useState('');
   const [apellido, setApellido] = useState('');
   const [razonSocial, setRazonSocial] = useState('');
+  const [codigoGenerado, setCodigoGenerado] = useState<string | null>(null);
+  const [generandoCodigo, setGenerandoCodigo] = useState(false);
+
+  // Estado de Suscripción PRO
+  const [isPro, setIsPro] = useState(false);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -35,6 +42,17 @@ export default function PerfilScreen() {
           if (data.nombre) setNombre(data.nombre);
           if (data.apellido) setApellido(data.apellido);
           if (data.razonSocial) setRazonSocial(data.razonSocial);
+          if (data.codigoContador) setCodigoGenerado(data.codigoContador);
+        }
+
+        // Revisar Entitlements de RevenueCat
+        try {
+          const customerInfo = await Purchases.getCustomerInfo();
+          if (typeof customerInfo.entitlements.active['MaxiTech Solutions SpA Pro'] !== "undefined") {
+            setIsPro(true);
+          }
+        } catch (rcError) {
+          console.log("No se pudo obtener información de RevenueCat:", rcError);
         }
       } catch (error) {
         console.error("Error al cargar perfil:", error);
@@ -69,6 +87,49 @@ export default function PerfilScreen() {
     }
   };
 
+  const generarCodigo = async () => {
+    if (!auth.currentUser) return;
+    setGenerandoCodigo(true);
+    try {
+      // Generar código alfanumérico complejo de 8 caracteres (mayúsculas, minúsculas y números)
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      let newCode = '';
+      for (let i = 0; i < 8; i++) {
+        newCode += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+
+      const docRef = doc(db, 'usuarios', auth.currentUser.uid);
+      await updateDoc(docRef, { codigoContador: newCode });
+
+      setCodigoGenerado(newCode);
+    } catch (error) {
+      console.error("Error al generar código:", error);
+      Alert.alert("Error", "No se pudo generar el código.");
+    } finally {
+      setGenerandoCodigo(false);
+    }
+  };
+
+  const handleShareCode = async () => {
+    if (!codigoGenerado) return;
+    try {
+      await Share.share({
+        message: `¡Hola! Mi código de acceso para la app ContaLink es: ${codigoGenerado}`,
+      });
+    } catch (error: any) {
+      Alert.alert("Error", "No se pudo compartir el código.");
+    }
+  };
+
+  const handleManageSubscription = async () => {
+    try {
+      await RevenueCatUI.presentCustomerCenter();
+    } catch (error) {
+      console.log("Error al abrir Customer Center:", error);
+      Alert.alert("Error", "No se pudo abrir el centro de suscripciones.");
+    }
+  };
+
   const handleLogout = async () => {
     Alert.alert("Cerrar Sesión", "¿Estás seguro que deseas salir?", [
       { text: "Cancelar", style: "cancel" },
@@ -100,16 +161,18 @@ export default function PerfilScreen() {
 
         {/* --- CABECERA DEL PERFIL --- */}
         <View style={localStyles.headerProfile}>
-          <View style={localStyles.avatarCircle}>
+          <View style={[localStyles.avatarCircle, userData?.rol === 'admin_empresa' && { backgroundColor: '#FFF0E6' }]}>
             <Ionicons
               name={userData?.rol === 'admin_empresa' ? "business" : "person"}
               size={40}
-              color="#007AFF"
+              color={userData?.rol === 'admin_empresa' ? "#FF9500" : "#007AFF"}
             />
           </View>
-          <Text style={localStyles.emailText}>{userData?.email}</Text>
-          <View style={localStyles.badge}>
-            <Text style={localStyles.badgeText}>{getRoleLabel()}</Text>
+          <Text style={localStyles.emailText}>
+            {userData?.email} {isPro && <Text style={{ color: '#00C851', fontWeight: 'bold' }}>(PRO)</Text>}
+          </Text>
+          <View style={[localStyles.badge, userData?.rol === 'admin_empresa' && { backgroundColor: '#FFF0E6' }]}>
+            <Text style={[localStyles.badgeText, userData?.rol === 'admin_empresa' && { color: '#FF9500' }]}>{getRoleLabel()}</Text>
           </View>
         </View>
 
@@ -144,8 +207,57 @@ export default function PerfilScreen() {
             <TextInput style={[localStyles.input, localStyles.inputDisabled]} value={userData?.email} editable={false} />
           </View>
 
+          {/* --- SECCIÓN CÓDIGO CONTADOR --- */}
+          {userData?.rol !== 'contador' && (
+            <View style={localStyles.codeCard}>
+              <Text style={localStyles.codeTitle}>Vincular con tu Contador</Text>
+              <Text style={localStyles.codeSubtitle}>Dale este código a tu contador para que te agregue a su cartera y gestione tus documentos.</Text>
+
+              {codigoGenerado ? (
+                <View>
+                  <View style={localStyles.codeDisplayBox}>
+                    <Text style={localStyles.codeText}>{codigoGenerado}</Text>
+                  </View>
+
+                  <View style={localStyles.shareActionRow}>
+                    <TouchableOpacity
+                      style={localStyles.btnRefresh}
+                      onPress={generarCodigo}
+                      disabled={generandoCodigo}
+                    >
+                      {generandoCodigo ? <ActivityIndicator color="#666" /> : <Ionicons name="refresh" size={24} color="#666" />}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={localStyles.btnShare}
+                      onPress={handleShareCode}
+                    >
+                      <Ionicons name="share-social" size={20} color="#FFF" style={{ marginRight: 8 }} />
+                      <Text style={localStyles.btnTextPrimary}>Compartir Código</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[localStyles.btnPrimary, { marginTop: 0, backgroundColor: '#E8F1FF' }]}
+                  onPress={generarCodigo}
+                  disabled={generandoCodigo}
+                >
+                  {generandoCodigo ? <ActivityIndicator color="#007AFF" /> : (
+                    <Text style={[localStyles.btnTextPrimary, { color: '#007AFF' }]}>Generar Código de Acceso</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
           <TouchableOpacity style={localStyles.btnPrimary} onPress={handleGuardarCambios} disabled={saving}>
             {saving ? <ActivityIndicator color="#fff" /> : <Text style={localStyles.btnTextPrimary}>Guardar Cambios</Text>}
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[localStyles.btnOutline, { borderColor: '#007AFF', marginBottom: 15 }]} onPress={handleManageSubscription}>
+            <Ionicons name="card-outline" size={20} color="#007AFF" style={{ marginRight: 8 }} />
+            <Text style={[localStyles.btnTextOutline, { color: '#007AFF' }]}>Gestionar Suscripción</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={localStyles.btnOutline} onPress={handleLogout}>
@@ -180,5 +292,16 @@ const localStyles = StyleSheet.create({
   btnTextPrimary: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 
   btnOutline: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#ff4444' },
-  btnTextOutline: { color: '#ff4444', fontSize: 16, fontWeight: '600' }
+  btnTextOutline: { color: '#ff4444', fontSize: 16, fontWeight: '600' },
+
+  // Estilos Código
+  codeCard: { backgroundColor: '#F8F9FA', borderRadius: 16, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: '#EAEAEA' },
+  codeTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 5 },
+  codeSubtitle: { fontSize: 13, color: '#666', marginBottom: 15, lineHeight: 18 },
+  codeDisplayBox: { backgroundColor: '#E8F1FF', borderRadius: 12, padding: 15, marginBottom: 15 },
+  codeText: { fontSize: 32, fontWeight: '900', letterSpacing: 8, color: '#007AFF', textAlign: 'center' },
+
+  shareActionRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  btnRefresh: { backgroundColor: '#EAEAEA', width: 50, height: 50, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  btnShare: { flex: 1, flexDirection: 'row', backgroundColor: '#007AFF', height: 50, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }
 });

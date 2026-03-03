@@ -7,7 +7,11 @@ import { doc, getDoc } from 'firebase/firestore';
 import { StatusBar } from 'expo-status-bar';
 
 import { auth, db } from '../../utils/firebaseconfig';
+import { configureRevenueCat } from '../../utils/revenuecat';
 import LoginScreen from '../screens/LoginScreen'; // Ajusta la ruta si es necesario
+
+// Inicializamos RevenueCat al arrancar la app
+configureRevenueCat();
 
 export default function TabLayout() {
   const [user, setUser] = useState<any>(null);
@@ -44,18 +48,18 @@ export default function TabLayout() {
   // 👇 EL ENRUTADOR INTELIGENTE 👇
   useEffect(() => {
     // Si ya cargó la info y el usuario está en la raíz "/"
-    if (!initializing && pathname === '/') {
+    if (!initializing && user && rol !== null && pathname === '/') {
       if (rol === 'contador') {
         setTimeout(() => router.replace('/clientes'), 0);
       } else if (rol === 'admin_empresa') {
         // Redirigimos a la vista principal de la empresa
         setTimeout(() => router.replace('/empresa_gastos'), 0);
       }
-      // Si es 'persona_natural' o 'usuario', se queda en '/' (Mis Gastos normales)
+      // Si es 'persona_natural', 'trabajador' o 'usuario', se queda en '/' (Mis Gastos normales)
     }
-  }, [initializing, rol, pathname]);
+  }, [initializing, user, rol, pathname]);
 
-  if (initializing) {
+  if (initializing || (user && rol === null)) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff' }}>
         <ActivityIndicator size="large" color="#007AFF" />

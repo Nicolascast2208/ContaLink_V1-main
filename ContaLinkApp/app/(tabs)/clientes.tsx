@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  ActivityIndicator, 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
-  KeyboardAvoidingView,       
-  Platform,                  
-  TouchableWithoutFeedback,   
-  Keyboard                   
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard
 } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
@@ -24,7 +24,7 @@ import { auth, db } from '../../utils/firebaseconfig';
 export default function ClientesScreen() {
   const [loading, setLoading] = useState(true);
   const [misClientes, setMisClientes] = useState<any[]>([]);
-  
+
   // Estados para el Modal de Agregar Cliente
   const [modalVisible, setModalVisible] = useState(false);
   const [codigoInput, setCodigoInput] = useState('');
@@ -35,7 +35,7 @@ export default function ClientesScreen() {
   // Escuchar en tiempo real la lista de clientes vinculados a este contador
   useEffect(() => {
     if (!auth.currentUser) return;
-    
+
     const docRef = doc(db, "usuarios", auth.currentUser.uid);
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -51,16 +51,16 @@ export default function ClientesScreen() {
 
   // Función para buscar el código y vincular al cliente
   const vincularCliente = async () => {
-    if (codigoInput.trim().length !== 6) {
-      return Alert.alert("Error", "El código debe tener exactamente 6 caracteres.");
+    if (codigoInput.trim().length !== 8) {
+      return Alert.alert("Error", "El código debe tener exactamente 8 caracteres.");
     }
 
     setBuscando(true);
     try {
-      const codigoMayuscula = codigoInput.trim().toUpperCase();
+      const codigoBuscar = codigoInput.trim(); // Sensible a mayúsculas/minúsculas
 
       // 1. Buscamos si existe algún usuario con ese código generado
-      const q = query(collection(db, "usuarios"), where("codigoContador", "==", codigoMayuscula));
+      const q = query(collection(db, "usuarios"), where("codigoContador", "==", codigoBuscar));
       const querySnapshot = await getDocs(q);
 
       if (querySnapshot.empty) {
@@ -134,7 +134,7 @@ export default function ClientesScreen() {
           </View>
         }
         renderItem={({ item }) => (
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.clientCard}
             // <-- 3. NAVEGAMOS A LA PANTALLA DINÁMICA AL HACER CLIC
             onPress={() => router.push({
@@ -163,8 +163,8 @@ export default function ClientesScreen() {
       {/* MODAL OPTIMIZADO PARA EL TECLADO (NUEVO CÓDIGO AQUÍ)     */}
       {/* ======================================================== */}
       <Modal visible={modalVisible} transparent={true} animationType="slide" onRequestClose={() => setModalVisible(false)}>
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === "ios" ? "padding" : "height"} 
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={{ flex: 1 }}
         >
           {/* Tocar el fondo oscuro cierra el teclado */}
@@ -179,22 +179,22 @@ export default function ClientesScreen() {
                       <Ionicons name="close" size={24} color="#666" />
                     </TouchableOpacity>
                   </View>
-                  
-                  <Text style={styles.modalDesc}>Ingresa el código de 6 dígitos que tu cliente generó en su perfil.</Text>
-                  
-                  <TextInput 
-                    style={styles.codigoInput} 
-                    placeholder="Ej: A7X9WQ" 
+
+                  <Text style={styles.modalDesc}>Ingresa el código de 8 caracteres que tu cliente generó en su perfil (respeta mayúsculas y minúsculas).</Text>
+
+                  <TextInput
+                    style={styles.codigoInput}
+                    placeholder="Ej: aB3x9QzY"
                     placeholderTextColor="#999"
-                    value={codigoInput} 
+                    value={codigoInput}
                     onChangeText={setCodigoInput}
-                    autoCapitalize="characters"
-                    maxLength={6}
+                    autoCapitalize="none"
+                    maxLength={8}
                     returnKeyType="done"                       // <-- Muestra el botón "Listo" en el teclado iOS
                     onSubmitEditing={() => Keyboard.dismiss()} // <-- Cierra el teclado al darle "Listo"
                   />
 
-                  <TouchableOpacity style={styles.btnVincular} onPress={vincularCliente} disabled={buscando || codigoInput.length < 6}>
+                  <TouchableOpacity style={styles.btnVincular} onPress={vincularCliente} disabled={buscando || codigoInput.length < 8}>
                     {buscando ? <ActivityIndicator color="#FFF" /> : <Text style={styles.btnVincularText}>Vincular Cliente</Text>}
                   </TouchableOpacity>
                 </View>
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
   header: { backgroundColor: '#FFFFFF', paddingTop: 60, paddingBottom: 15, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#EAEAEA' },
   headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#101A26' },
-  
+
   // Lista de Clientes
   clientCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 15, borderRadius: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
   clientAvatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#E5F1FF', justifyContent: 'center', alignItems: 'center', marginRight: 15 },

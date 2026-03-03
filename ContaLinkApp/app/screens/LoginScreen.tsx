@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert,
   KeyboardAvoidingView, Platform, Image, StyleSheet, ScrollView
@@ -14,6 +14,8 @@ import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import { makeRedirectUri } from 'expo-auth-session';
+import RevenueCatUI from 'react-native-purchases-ui';
+import * as Linking from 'expo-linking';
 
 import { auth, db } from '../../utils/firebaseconfig';
 // Importamos nuestros estilos globales para unificar la interfaz
@@ -63,7 +65,62 @@ export default function LoginScreen() {
   const [apellido, setApellido] = useState('');
   const [rut, setRut] = useState('');
   const [razonSocial, setRazonSocial] = useState('');
+  const [funcion, setFuncion] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  // INVITACIÓN COLLABORADOR
+  const url = Linking.useURL();
+  const [empresaIdInvitacion, setEmpresaIdInvitacion] = useState<string | null>(null);
+  const [empresaNombreInvitacion, setEmpresaNombreInvitacion] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (url) {
+      const parsedUrl = Linking.parse(url);
+      if (parsedUrl.path === 'invite' && parsedUrl.queryParams?.empresaId) {
+        setEmpresaIdInvitacion(parsedUrl.queryParams.empresaId as string);
+        setEmpresaNombreInvitacion((parsedUrl.queryParams.empresaNombre as string) || 'una empresa');
+        setIsLogin(false); // Forzar pantalla de registro
+      }
+    }
+  }, [url]);
+
+  // Calcular la fuerza de la contraseña (0 a 3)
+  const [passwordStrength, setPasswordStrength] = useState(0);
+
+  const evaluatePasswordStrength = (pass: string) => {
+    let score = 0;
+    if (pass.length > 0) score += 1; // Weak by default if typed
+    if (pass.length >= 6 && /[0-9]/.test(pass) && /[a-zA-Z]/.test(pass)) score += 1; // Medium
+    if (pass.length >= 8 && /[A-Z]/.test(pass) && /[a-z]/.test(pass) && /[0-9]/.test(pass) && /[^a-zA-Z0-9]/.test(pass)) score += 1; // Strong
+
+    setPasswordStrength(score);
+    setPassword(pass);
+  };
+
+  const isFormValid = () => {
+    if (isLogin) {
+      return email.trim().length > 0 && password.length > 0;
+    }
+
+    if (!validarEmail(email.trim()) || !validarRutChileno(rut)) return false;
+
+
+    const req1 = password.length >= 6;
+    const req2 = /[0-9]/.test(password) && /[^a-zA-Z0-9]/.test(password);
+    const req3 = /[0-9]/.test(password) && /[A-Z]/.test(password) && /[a-z]/.test(password);
+
+    if (!req1 || !req2 || !req3) return false;
+
+    if (empresaIdInvitacion) {
+      if (!nombre.trim() || !apellido.trim() || !rut.trim() || !funcion.trim()) return false;
+    } else if (tipoUsuario === 'contador' || (tipoUsuario === 'usuario' && subTipoUsuario === 'natural')) {
+      if (!nombre.trim() || !apellido.trim() || !rut.trim()) return false;
+    } else if (tipoUsuario === 'usuario' && subTipoUsuario === 'empresa') {
+      if (!razonSocial.trim() || !rut.trim()) return false;
+    }
+
+    return true;
+  };
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     clientId: '807808449081-0hei11dh9m3bdb7shgt2cg5ll1ba6ed8.apps.googleusercontent.com',
@@ -80,6 +137,15 @@ export default function LoginScreen() {
       } else {
         if (!validarEmail(email.trim())) throw new Error("Email inválido.");
         if (!validarRutChileno(rut)) throw new Error("RUT inválido.");
+
+        const req1 = password.length >= 6;
+        const req2 = /[0-9]/.test(password) && /[^a-zA-Z0-9]/.test(password);
+        const req3 = /[0-9]/.test(password) && /[A-Z]/.test(password) && /[a-z]/.test(password);
+
+        if (!req1 || !req2 || !req3) {
+          throw new Error("La contraseña debe cumplir con todos los requisitos de seguridad.");
+        }
+
 
         if (tipoUsuario === 'contador' || (tipoUsuario === 'usuario' && subTipoUsuario === 'natural')) {
           if (!nombre.trim() || !apellido.trim() || !rut.trim()) throw new Error("Completa nombre, apellido y RUT.");
@@ -99,7 +165,15 @@ export default function LoginScreen() {
           fechaRegistro: serverTimestamp(),
         };
 
-        if (tipoUsuario === 'contador') {
+        if (empresaIdInvitacion) {
+          await updateProfile(user, { displayName: `${nombre.trim()} ${apellido.trim()}` });
+          perfilData.rol = 'trabajador';
+          perfilData.nombre = nombre.trim();
+          perfilData.apellido = apellido.trim();
+          perfilData.funcion = funcion.trim();
+          perfilData.empresaId = empresaIdInvitacion;
+          perfilData.codigoContador = null;
+        } else if (tipoUsuario === 'contador') {
           await updateProfile(user, { displayName: `${nombre.trim()} ${apellido.trim()}` });
           perfilData.rol = 'contador';
           perfilData.nombre = nombre.trim();
@@ -120,9 +194,46 @@ export default function LoginScreen() {
         }
 
         await setDoc(doc(db, "usuarios", user.uid), perfilData);
+
+        // Presentar Paywall de RevenueCat tras registro exitoso
+        try {
+          await RevenueCatUI.presentPaywall();
+        } catch (paywallError) {
+          console.log("El usuario cerró el paywall o hubo un error:", paywallError);
+        }
       }
     } catch (error: any) {
-      Alert.alert("Error", error.message);
+      let errorMessage = error.message;
+
+      // Traducir los códigos de error comunes de Firebase
+      if (error.code) {
+        switch (error.code) {
+          case 'auth/invalid-credential':
+          case 'auth/user-not-found':
+          case 'auth/wrong-password':
+            errorMessage = "Correo o contraseña incorrectos.";
+            break;
+          case 'auth/email-already-in-use':
+            errorMessage = "Este correo electrónico ya está registrado.";
+            break;
+          case 'auth/invalid-email':
+            errorMessage = "El formato del correo electrónico no es válido.";
+            break;
+          case 'auth/weak-password':
+            errorMessage = "La contraseña proporcionada es muy débil.";
+            break;
+          case 'auth/too-many-requests':
+            errorMessage = "Has intentado muchas veces. Por favor, intenta de nuevo más tarde.";
+            break;
+          case 'auth/network-request-failed':
+            errorMessage = "Error de red. Por favor revisa tu conexión a internet.";
+            break;
+          default:
+            errorMessage = "Ocurrió un error inesperado al iniciar sesión.";
+        }
+      }
+
+      Alert.alert("Error", errorMessage);
     } finally {
       setLoadingAuth(false);
     }
@@ -139,42 +250,61 @@ export default function LoginScreen() {
           <View style={localStyles.formContainer}>
             {!isLogin && (
               <>
-                <View style={localStyles.roleSelector}>
-                  <TouchableOpacity
-                    style={[localStyles.roleBtn, tipoUsuario === 'usuario' && localStyles.roleBtnActive]}
-                    onPress={() => setTipoUsuario('usuario')}
-                  >
-                    <Text style={[localStyles.roleText, tipoUsuario === 'usuario' && localStyles.roleTextActive]}>Soy Usuario</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[localStyles.roleBtn, tipoUsuario === 'contador' && localStyles.roleBtnActive]}
-                    onPress={() => setTipoUsuario('contador')}
-                  >
-                    <Text style={[localStyles.roleText, tipoUsuario === 'contador' && localStyles.roleTextActive]}>Soy Contador</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {tipoUsuario === 'usuario' && (
-                  <View style={localStyles.subRoleSelector}>
-                    <TouchableOpacity
-                      style={[localStyles.subRoleBtn, subTipoUsuario === 'natural' && localStyles.subRoleBtnActive]}
-                      onPress={() => setSubTipoUsuario('natural')}
-                    >
-                      <Text style={[localStyles.subRoleText, subTipoUsuario === 'natural' && localStyles.subRoleTextActive]}>Persona Natural</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[localStyles.subRoleBtn, subTipoUsuario === 'empresa' && localStyles.subRoleBtnActive]}
-                      onPress={() => setSubTipoUsuario('empresa')}
-                    >
-                      <Text style={[localStyles.subRoleText, subTipoUsuario === 'empresa' && localStyles.subRoleTextActive]}>Empresa</Text>
-                    </TouchableOpacity>
+                {empresaIdInvitacion ? (
+                  <View style={{ backgroundColor: '#E8F1FF', padding: 15, borderRadius: 12, marginBottom: 20 }}>
+                    <Text style={{ fontSize: 16, color: '#007AFF', fontWeight: 'bold', textAlign: 'center' }}>
+                      Invitación de Colaborador
+                    </Text>
+                    <Text style={{ fontSize: 14, color: '#333', textAlign: 'center', marginTop: 5 }}>
+                      Estás creando una cuenta para unirte a: <Text style={{ fontWeight: 'bold' }}>{empresaNombreInvitacion}</Text>
+                    </Text>
                   </View>
+                ) : (
+                  <>
+                    <View style={localStyles.roleSelector}>
+                      <TouchableOpacity
+                        style={[localStyles.roleBtn, tipoUsuario === 'usuario' && localStyles.roleBtnActive]}
+                        onPress={() => setTipoUsuario('usuario')}
+                      >
+                        <Text style={[localStyles.roleText, tipoUsuario === 'usuario' && localStyles.roleTextActive]}>Soy Usuario</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[localStyles.roleBtn, tipoUsuario === 'contador' && localStyles.roleBtnActive]}
+                        onPress={() => setTipoUsuario('contador')}
+                      >
+                        <Text style={[localStyles.roleText, tipoUsuario === 'contador' && localStyles.roleTextActive]}>Soy Contador</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {tipoUsuario === 'usuario' && (
+                      <View style={localStyles.subRoleSelector}>
+                        <TouchableOpacity
+                          style={[localStyles.subRoleBtn, subTipoUsuario === 'natural' && localStyles.subRoleBtnActive]}
+                          onPress={() => setSubTipoUsuario('natural')}
+                        >
+                          <Text style={[localStyles.subRoleText, subTipoUsuario === 'natural' && localStyles.subRoleTextActive]}>Persona Natural</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[localStyles.subRoleBtn, subTipoUsuario === 'empresa' && localStyles.subRoleBtnActive]}
+                          onPress={() => setSubTipoUsuario('empresa')}
+                        >
+                          <Text style={[localStyles.subRoleText, subTipoUsuario === 'empresa' && localStyles.subRoleTextActive]}>Empresa</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </>
                 )}
 
-                {(tipoUsuario === 'contador' || (tipoUsuario === 'usuario' && subTipoUsuario === 'natural')) ? (
+                {empresaIdInvitacion ? (
                   <>
-                    {/* Usamos los inputs definidos en el Styles.ts global */}
+                    <TextInput autoFocus={!isLogin} placeholder="Nombre" placeholderTextColor="#999" value={nombre} onChangeText={setNombre} style={globalStyles.input} />
+                    <TextInput placeholder="Apellido" placeholderTextColor="#999" value={apellido} onChangeText={setApellido} style={globalStyles.input} />
+                    <TextInput placeholder="Cargo o Función" placeholderTextColor="#999" value={funcion} onChangeText={setFuncion} style={globalStyles.input} />
+                  </>
+                ) : (tipoUsuario === 'contador' || (tipoUsuario === 'usuario' && subTipoUsuario === 'natural')) ? (
+                  <>
                     <TextInput
+                      autoFocus={!isLogin}
                       placeholder="Nombre" placeholderTextColor="#999"
                       value={nombre} onChangeText={setNombre} style={globalStyles.input}
                     />
@@ -185,13 +315,14 @@ export default function LoginScreen() {
                   </>
                 ) : (
                   <TextInput
+                    autoFocus={!isLogin}
                     placeholder="Nombre de la Empresa o Razón Social" placeholderTextColor="#999"
                     value={razonSocial} onChangeText={setRazonSocial} style={globalStyles.input}
                   />
                 )}
 
                 <TextInput
-                  placeholder={tipoUsuario === 'usuario' && subTipoUsuario === 'empresa' ? "RUT Empresa" : "RUT"}
+                  placeholder={(!empresaIdInvitacion && tipoUsuario === 'usuario' && subTipoUsuario === 'empresa') ? "RUT Empresa" : "RUT"}
                   placeholderTextColor="#999"
                   value={rut}
                   onChangeText={(t) => setRut(formatearRut(t))}
@@ -216,7 +347,7 @@ export default function LoginScreen() {
                 placeholder="Contraseña"
                 placeholderTextColor="#999"
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={evaluatePasswordStrength}
                 style={localStyles.passwordInput}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
@@ -226,8 +357,48 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
+            {!isLogin && password.length > 0 && (
+              <View style={localStyles.strengthContainer}>
+                <View style={localStyles.strengthBarBg}>
+                  <View style={[
+                    localStyles.strengthBarFill,
+                    { width: passwordStrength === 1 ? '33%' : passwordStrength === 2 ? '66%' : '100%' },
+                    { backgroundColor: passwordStrength === 1 ? '#ff4444' : passwordStrength === 2 ? '#FFBB33' : '#00C851' }
+                  ]} />
+                </View>
+                <Text style={[
+                  localStyles.strengthLabel,
+                  { color: passwordStrength === 1 ? '#ff4444' : passwordStrength === 2 ? '#FFBB33' : '#00C851' }
+                ]}>
+                  {passwordStrength === 1 ? 'Débil' : passwordStrength === 2 ? 'Media' : 'Fuerte'}
+                </Text>
+              </View>
+            )}
+
+            {!isLogin && (
+              <View style={localStyles.passwordReqContainer}>
+                <Text style={password.length >= 6 ? localStyles.reqMet : localStyles.reqUnmet}>
+                  {password.length >= 6 ? "✓" : "•"} Debe tener por lo menos 6 caracteres
+                </Text>
+                <Text style={/[0-9]/.test(password) && /[^a-zA-Z0-9]/.test(password) ? localStyles.reqMet : localStyles.reqUnmet}>
+                  {/[0-9]/.test(password) && /[^a-zA-Z0-9]/.test(password) ? "✓" : "•"} Debe incluir un número y un carácter que no sea ni una letra ni un número
+                </Text>
+                <Text style={/[0-9]/.test(password) && /[A-Z]/.test(password) && /[a-z]/.test(password) ? localStyles.reqMet : localStyles.reqUnmet}>
+                  {/[0-9]/.test(password) && /[A-Z]/.test(password) && /[a-z]/.test(password) ? "✓" : "•"} Debe incluir números y letras mayúsculas y minúsculas
+                </Text>
+              </View>
+            )}
+
             {/* Usamos el botón azul global de Styles.ts */}
-            <TouchableOpacity style={[globalStyles.btnPrimary, { marginTop: 10 }]} onPress={handleAuth} disabled={loadingAuth}>
+            <TouchableOpacity
+              style={[
+                globalStyles.btnPrimary,
+                { marginTop: 10 },
+                !isFormValid() && !isLogin && { backgroundColor: '#cccccc' }
+              ]}
+              onPress={handleAuth}
+              disabled={loadingAuth || (!isFormValid() && !isLogin)}
+            >
               {loadingAuth ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.btnText}>{isLogin ? "Entrar" : "Registrarse"}</Text>}
             </TouchableOpacity>
 
@@ -262,5 +433,16 @@ const localStyles = StyleSheet.create({
   // El estilo para el campo de la contraseña necesita mantener su propia configuración para el ícono del ojo
   passwordContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0f2f5', borderRadius: 10, marginBottom: 15 },
   passwordInput: { flex: 1, padding: 15, fontSize: 16, color: '#333333' },
-  eyeIcon: { paddingHorizontal: 16, paddingVertical: 14 }
+  eyeIcon: { paddingHorizontal: 16, paddingVertical: 14 },
+
+  // Requisitos de contraseña
+  passwordReqContainer: { marginTop: -5, marginBottom: 15, paddingHorizontal: 5 },
+  reqUnmet: { fontSize: 13, color: '#666', marginBottom: 4, paddingRight: 10 },
+  reqMet: { fontSize: 13, color: '#00C851', marginBottom: 4, fontWeight: '500', paddingRight: 10 },
+
+  // Barra de seguridad
+  strengthContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, paddingHorizontal: 5 },
+  strengthBarBg: { flex: 1, height: 6, backgroundColor: '#E0E0E0', borderRadius: 3, marginRight: 10, overflow: 'hidden' },
+  strengthBarFill: { height: '100%', borderRadius: 3 },
+  strengthLabel: { fontSize: 12, fontWeight: 'bold', width: 45, textAlign: 'right' }
 });
