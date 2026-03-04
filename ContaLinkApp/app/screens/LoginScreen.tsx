@@ -125,7 +125,7 @@ export default function LoginScreen() {
     } else if (tipoUsuario === 'contador' || (tipoUsuario === 'usuario' && subTipoUsuario === 'natural')) {
       if (!nombre.trim() || !apellido.trim() || !rut.trim()) return false;
     } else if (tipoUsuario === 'usuario' && subTipoUsuario === 'empresa') {
-      if (!razonSocial.trim() || !rut.trim()) return false;
+      if (!nombre.trim() || !apellido.trim() || !razonSocial.trim() || !rut.trim()) return false;
     }
 
     return true;
@@ -200,7 +200,7 @@ export default function LoginScreen() {
         } else if (tipoUsuario === 'contador' || (tipoUsuario === 'usuario' && subTipoUsuario === 'natural')) {
           if (!nombre.trim() || !apellido.trim() || !rut.trim()) throw new Error("Completa nombre, apellido y RUT.");
         } else if (tipoUsuario === 'usuario' && subTipoUsuario === 'empresa') {
-          if (!razonSocial.trim() || !rut.trim()) throw new Error("Completa la Razón Social y RUT de la empresa.");
+          if (!nombre.trim() || !apellido.trim() || !razonSocial.trim() || !rut.trim()) throw new Error("Completa Nombre del Administrador, Apellido, Razón Social y RUT.");
         }
 
         // @ts-ignore
@@ -240,6 +240,8 @@ export default function LoginScreen() {
         } else if (tipoUsuario === 'usuario' && subTipoUsuario === 'empresa') {
           await updateProfile(user, { displayName: razonSocial.trim() });
           perfilData.rol = 'admin_empresa';
+          perfilData.nombre = nombre.trim();
+          perfilData.apellido = apellido.trim();
           perfilData.razonSocial = razonSocial.trim();
           perfilData.colaboradoresActivos = 0;
           perfilData.codigoContador = null;
@@ -433,6 +435,17 @@ export default function LoginScreen() {
                           autoFocus={true}
                           placeholder="Nombre de la Empresa o Razón Social" placeholderTextColor="#999"
                           value={razonSocial} onChangeText={setRazonSocial} style={globalStyles.input}
+                        />
+                        <Text style={{ fontSize: 13, color: '#666', marginBottom: 5, marginTop: 5, paddingHorizontal: 5 }}>
+                          Información del Administrador:
+                        </Text>
+                        <TextInput
+                          placeholder="Nombre del Administrador" placeholderTextColor="#999"
+                          value={nombre} onChangeText={setNombre} style={globalStyles.input}
+                        />
+                        <TextInput
+                          placeholder="Apellido del Administrador" placeholderTextColor="#999"
+                          value={apellido} onChangeText={setApellido} style={globalStyles.input}
                         />
                       </>
                     )}

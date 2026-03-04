@@ -45,6 +45,7 @@ export default function EmpresaGastosScreen() {
   const [tempGlosa, setTempGlosa] = useState('');
   const [tempTipoDoc, setTempTipoDoc] = useState('Boleta');
   const [tempNumeroDoc, setTempNumeroDoc] = useState('');
+  const [tempCategoria, setTempCategoria] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Estados de subida
@@ -124,6 +125,7 @@ export default function EmpresaGastosScreen() {
         glosa: tempGlosa,
         tipoDocumento: tempTipoDoc,
         numeroDocumento: tempNumeroDoc,
+        categoriaComercio: tempCategoria,
       };
 
       if (nuevoEstado === 'Rechazado' && motivoRechazo.trim() !== '') {
@@ -169,6 +171,7 @@ export default function EmpresaGastosScreen() {
     setTempGlosa(gasto.glosa || '');
     setTempTipoDoc(gasto.tipoDocumento || 'Boleta');
     setTempNumeroDoc(gasto.numeroDocumento || '');
+    setTempCategoria(gasto.categoriaComercio || 'Otro');
 
     setModalDetalleVisible(true);
   };
@@ -472,6 +475,9 @@ export default function EmpresaGastosScreen() {
 
                     <Text style={styles.label}>Comercio:</Text>
                     <TextInput style={[styles.inputEdit, isReadOnly && styles.inputDisabled]} editable={!isReadOnly} value={tempComercio} onChangeText={setTempComercio} placeholder="Nombre del comercio" />
+
+                    <Text style={styles.label}>Categoría (IA):</Text>
+                    <TextInput style={[styles.inputEdit, isReadOnly && styles.inputDisabled]} editable={!isReadOnly} value={tempCategoria} onChangeText={setTempCategoria} placeholder="Ej: Automotriz" />
 
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
                       <View style={{ flex: 1 }}>

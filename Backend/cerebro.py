@@ -16,6 +16,7 @@ from google.oauth2 import service_account
 
 from sii_helper import consultar_rut_sii 
 from PIL import Image 
+from categorizador import clasificar_gasto
 
 # --- INICIALIZACIÓN DE FLASK ---
 app = Flask(__name__)
@@ -207,7 +208,8 @@ def actualizar_base_de_datos(ruta_antigua, ruta_nueva, datos, miniatura_base64=N
         'monto': datos['total'], 'iva': datos['iva'], 'fechaDetectada': datos['fecha'],
         'fechaProceso': datetime.now(), 'comercio': nombre_comercio,
         'rut': datos['rut'], 'glosa': datos['glosa'], 'giro': datos['giro'],
-        'tipoDocumento': datos['tipo_documento'], 'numeroDocumento': datos['numero_documento']
+        'tipoDocumento': datos['tipo_documento'], 'numeroDocumento': datos['numero_documento'],
+        'categoriaComercio': datos.get('categoriaComercio', 'Otro')
     }
     
     if miniatura_base64:
@@ -285,6 +287,8 @@ def procesar_boleta_endpoint():
                 datos['giro'] = info_sii['giro']
                 if datos['comercio'] == "Comercio Desconocido" or len(datos['comercio']) < 3:
                     datos['comercio'] = info_sii['razon_social']
+        
+        datos['categoriaComercio'] = clasificar_gasto(datos['comercio'], texto)
         
         nueva_ruta = f"usuarios/{partes[1]}/procesados/{partes[3]}"
         new_blob = bucket.rename_blob(blob, nueva_ruta)

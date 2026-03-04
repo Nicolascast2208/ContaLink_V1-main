@@ -142,6 +142,17 @@ export default function TabLayout() {
         />
 
         <Tabs.Screen
+          name="empresa_graficos"
+          options={{
+            title: 'Gráficos',
+            href: rol === 'admin_empresa' ? '/empresa_graficos' : null,
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons name={focused ? "pie-chart" : "pie-chart-outline"} size={24} color={color} />
+            ),
+          }}
+        />
+
+        <Tabs.Screen
           name="empresa_colaboradores"
           options={{
             title: 'Colaboradores',

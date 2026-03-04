@@ -121,6 +121,7 @@ export const useGastos = (user: any) => {
         ruta: rutaStorage,
         fechaSubida: serverTimestamp(),
         estado: "Pendiente", // Estado de la IA
+        categoriaComercio: "Procesando...",
         monto: 0,
         iva: 0,
         comercio: "Procesando...",
@@ -133,7 +134,9 @@ export const useGastos = (user: any) => {
         // --- CAMPOS DE APROBACIÓN EMPRESARIAL ---
         empresaId: assignedEmpresaId,
         estadoAprobacion: 'Pendiente', // Todos entran a ciclo de revisión, incluyendo al Admin
-        nombreTrabajador: esTrabajador ? `${perfilData.nombre} ${perfilData.apellido}` : 'Propietario (Admin)'
+        nombreTrabajador: esTrabajador
+          ? `${perfilData.nombre} ${perfilData.apellido}`
+          : (perfilData.nombre ? `${perfilData.nombre} ${perfilData.apellido || ''}`.trim() : 'Propietario (Admin)')
       });
 
       // Llamar al cerebro en Python
