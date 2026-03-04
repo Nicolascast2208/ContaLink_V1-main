@@ -58,6 +58,10 @@ export default function LoginScreen() {
   const [tipoUsuario, setTipoUsuario] = useState<'usuario' | 'contador'>('usuario');
   const [subTipoUsuario, setSubTipoUsuario] = useState<'natural' | 'empresa'>('natural');
 
+  // CONTROL DE PASOS PARA EMPRESA
+  const [pasoRegistroEmpresa, setPasoRegistroEmpresa] = useState<1 | 2>(1);
+  const [buscandoSii, setBuscandoSii] = useState(false);
+
   // CAMPOS DE FORMULARIO
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -66,6 +70,11 @@ export default function LoginScreen() {
   const [rut, setRut] = useState('');
   const [razonSocial, setRazonSocial] = useState('');
   const [funcion, setFuncion] = useState('');
+
+  // CAMPOS EXTRA PARA COLABORADOR INVITADO
+  const [correoContacto, setCorreoContacto] = useState('');
+  const [telefonoContacto, setTelefonoContacto] = useState('');
+
   const [showPassword, setShowPassword] = useState(false);
 
   // INVITACIÓN COLLABORADOR
@@ -122,6 +131,43 @@ export default function LoginScreen() {
     return true;
   };
 
+  const handleBuscarSii = async () => {
+    if (!validarRutChileno(rut)) {
+      Alert.alert("RUT Inválido", "Por favor ingresa un RUT de empresa válido antes de buscar.");
+      return;
+    }
+
+    setBuscandoSii(true);
+    try {
+      const response = await fetch('https://cerebro-api-807808449081.us-central1.run.app/consultar_rut', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rut: rut.replace(/[^0-9kK]/g, '').toUpperCase() })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.status === 'exito') {
+        setRazonSocial(data.razon_social);
+        // Avanzamos al paso 2
+        setPasoRegistroEmpresa(2);
+      } else {
+        Alert.alert(
+          "No encontrado",
+          "El RUT no se encontró en el SII o no pertenece a una empresa validada. Puedes ingresar la Razón Social manualmente.",
+          [
+            { text: "Ingresar Manualmente", onPress: () => setPasoRegistroEmpresa(2) }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error("Error consultando SII:", error);
+      Alert.alert("Error de conexión", "No pudimos conectar con el servidor. Puedes continuar ingresando los datos manualmente.");
+      setPasoRegistroEmpresa(2);
+    } finally {
+      setBuscandoSii(false);
+    }
+  };
+
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     clientId: '807808449081-0hei11dh9m3bdb7shgt2cg5ll1ba6ed8.apps.googleusercontent.com',
     redirectUri: makeRedirectUri({ scheme: 'contalink' })
@@ -147,7 +193,11 @@ export default function LoginScreen() {
         }
 
 
-        if (tipoUsuario === 'contador' || (tipoUsuario === 'usuario' && subTipoUsuario === 'natural')) {
+        if (empresaIdInvitacion) {
+          if (!nombre.trim() || !apellido.trim() || !rut.trim() || !funcion.trim() || !correoContacto.trim() || !telefonoContacto.trim()) {
+            throw new Error("Completa todos los campos obligatorios, incluyendo correo y teléfono de contacto.");
+          }
+        } else if (tipoUsuario === 'contador' || (tipoUsuario === 'usuario' && subTipoUsuario === 'natural')) {
           if (!nombre.trim() || !apellido.trim() || !rut.trim()) throw new Error("Completa nombre, apellido y RUT.");
         } else if (tipoUsuario === 'usuario' && subTipoUsuario === 'empresa') {
           if (!razonSocial.trim() || !rut.trim()) throw new Error("Completa la Razón Social y RUT de la empresa.");
@@ -171,6 +221,8 @@ export default function LoginScreen() {
           perfilData.nombre = nombre.trim();
           perfilData.apellido = apellido.trim();
           perfilData.funcion = funcion.trim();
+          perfilData.correoContacto = correoContacto.trim();
+          perfilData.telefonoContacto = telefonoContacto.trim();
           perfilData.empresaId = empresaIdInvitacion;
           perfilData.codigoContador = null;
         } else if (tipoUsuario === 'contador') {
@@ -264,13 +316,19 @@ export default function LoginScreen() {
                     <View style={localStyles.roleSelector}>
                       <TouchableOpacity
                         style={[localStyles.roleBtn, tipoUsuario === 'usuario' && localStyles.roleBtnActive]}
-                        onPress={() => setTipoUsuario('usuario')}
+                        onPress={() => {
+                          setTipoUsuario('usuario');
+                          setPasoRegistroEmpresa(1); // Reset paso si es empresa
+                        }}
                       >
                         <Text style={[localStyles.roleText, tipoUsuario === 'usuario' && localStyles.roleTextActive]}>Soy Usuario</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[localStyles.roleBtn, tipoUsuario === 'contador' && localStyles.roleBtnActive]}
-                        onPress={() => setTipoUsuario('contador')}
+                        onPress={() => {
+                          setTipoUsuario('contador');
+                          setPasoRegistroEmpresa(1);
+                        }}
                       >
                         <Text style={[localStyles.roleText, tipoUsuario === 'contador' && localStyles.roleTextActive]}>Soy Contador</Text>
                       </TouchableOpacity>
@@ -286,7 +344,10 @@ export default function LoginScreen() {
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={[localStyles.subRoleBtn, subTipoUsuario === 'empresa' && localStyles.subRoleBtnActive]}
-                          onPress={() => setSubTipoUsuario('empresa')}
+                          onPress={() => {
+                            setSubTipoUsuario('empresa');
+                            setPasoRegistroEmpresa(1);
+                          }}
                         >
                           <Text style={[localStyles.subRoleText, subTipoUsuario === 'empresa' && localStyles.subRoleTextActive]}>Empresa</Text>
                         </TouchableOpacity>
@@ -300,6 +361,21 @@ export default function LoginScreen() {
                     <TextInput autoFocus={!isLogin} placeholder="Nombre" placeholderTextColor="#999" value={nombre} onChangeText={setNombre} style={globalStyles.input} />
                     <TextInput placeholder="Apellido" placeholderTextColor="#999" value={apellido} onChangeText={setApellido} style={globalStyles.input} />
                     <TextInput placeholder="Cargo o Función" placeholderTextColor="#999" value={funcion} onChangeText={setFuncion} style={globalStyles.input} />
+                    <TextInput
+                      placeholder="RUT" placeholderTextColor="#999"
+                      value={rut} onChangeText={(t) => setRut(formatearRut(t))}
+                      style={globalStyles.input} maxLength={12}
+                    />
+                    <TextInput
+                      placeholder="Correo de Contacto" placeholderTextColor="#999"
+                      value={correoContacto} onChangeText={setCorreoContacto}
+                      style={globalStyles.input} keyboardType="email-address" autoCapitalize="none"
+                    />
+                    <TextInput
+                      placeholder="Teléfono de Contacto" placeholderTextColor="#999"
+                      value={telefonoContacto} onChangeText={setTelefonoContacto}
+                      style={globalStyles.input} keyboardType="phone-pad"
+                    />
                   </>
                 ) : (tipoUsuario === 'contador' || (tipoUsuario === 'usuario' && subTipoUsuario === 'natural')) ? (
                   <>
@@ -312,97 +388,136 @@ export default function LoginScreen() {
                       placeholder="Apellido" placeholderTextColor="#999"
                       value={apellido} onChangeText={setApellido} style={globalStyles.input}
                     />
+                    <TextInput
+                      placeholder="RUT" placeholderTextColor="#999"
+                      value={rut} onChangeText={(t) => setRut(formatearRut(t))}
+                      style={globalStyles.input} maxLength={12}
+                    />
                   </>
                 ) : (
-                  <TextInput
-                    autoFocus={!isLogin}
-                    placeholder="Nombre de la Empresa o Razón Social" placeholderTextColor="#999"
-                    value={razonSocial} onChangeText={setRazonSocial} style={globalStyles.input}
-                  />
+                  // FLUJO DE EMPRESA
+                  <>
+                    {pasoRegistroEmpresa === 1 ? (
+                      <>
+                        <View style={localStyles.siiContainer}>
+                          <Ionicons name="search" size={24} color="#007AFF" />
+                          <Text style={localStyles.siiText}>Ingresa el RUT de tu empresa, obtendremos el nombre desde el SII automáticamente.</Text>
+                        </View>
+                        <TextInput
+                          autoFocus={!isLogin}
+                          placeholder="RUT Empresa" placeholderTextColor="#999"
+                          value={rut} onChangeText={(t) => setRut(formatearRut(t))}
+                          style={globalStyles.input} maxLength={12}
+                        />
+                        <TouchableOpacity
+                          style={[
+                            globalStyles.btnPrimary,
+                            { backgroundColor: validarRutChileno(rut) ? '#007AFF' : '#ccc', marginBottom: 20 }
+                          ]}
+                          onPress={handleBuscarSii}
+                          disabled={!validarRutChileno(rut) || buscandoSii}
+                        >
+                          {buscandoSii ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.btnText}>Buscar en SII</Text>}
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <>
+                        <View style={localStyles.paso2Header}>
+                          <Ionicons name="checkmark-circle" size={20} color="#34C759" />
+                          <Text style={localStyles.paso2Text}>RUT Valido: {rut}</Text>
+                          <TouchableOpacity onPress={() => setPasoRegistroEmpresa(1)}>
+                            <Text style={localStyles.paso2Edit}>Editar</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <TextInput
+                          autoFocus={true}
+                          placeholder="Nombre de la Empresa o Razón Social" placeholderTextColor="#999"
+                          value={razonSocial} onChangeText={setRazonSocial} style={globalStyles.input}
+                        />
+                      </>
+                    )}
+                  </>
                 )}
-
-                <TextInput
-                  placeholder={(!empresaIdInvitacion && tipoUsuario === 'usuario' && subTipoUsuario === 'empresa') ? "RUT Empresa" : "RUT"}
-                  placeholderTextColor="#999"
-                  value={rut}
-                  onChangeText={(t) => setRut(formatearRut(t))}
-                  style={globalStyles.input}
-                  maxLength={12}
-                />
               </>
             )}
 
-            <TextInput
-              placeholder="Correo Electrónico"
-              placeholderTextColor="#999"
-              value={email}
-              onChangeText={setEmail}
-              style={globalStyles.input}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-
-            <View style={localStyles.passwordContainer}>
-              <TextInput
-                placeholder="Contraseña"
-                placeholderTextColor="#999"
-                value={password}
-                onChangeText={evaluatePasswordStrength}
-                style={localStyles.passwordInput}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-              />
-              <TouchableOpacity style={localStyles.eyeIcon} onPress={() => setShowPassword(!showPassword)}>
-                <Ionicons name={showPassword ? "eye-off" : "eye"} size={22} color="#999" />
-              </TouchableOpacity>
-            </View>
-
-            {!isLogin && password.length > 0 && (
-              <View style={localStyles.strengthContainer}>
-                <View style={localStyles.strengthBarBg}>
-                  <View style={[
-                    localStyles.strengthBarFill,
-                    { width: passwordStrength === 1 ? '33%' : passwordStrength === 2 ? '66%' : '100%' },
-                    { backgroundColor: passwordStrength === 1 ? '#ff4444' : passwordStrength === 2 ? '#FFBB33' : '#00C851' }
-                  ]} />
+            {/* OCULTAR CAMPOS INFERIORES SI ESTAMOS EN PASO 1 DE EMPRESA */}
+            {(!(!isLogin && !empresaIdInvitacion && tipoUsuario === 'usuario' && subTipoUsuario === 'empresa' && pasoRegistroEmpresa === 1)) && (
+              <>
+                <TextInput
+                  placeholder="Correo Electrónico"
+                  placeholderTextColor="#999"
+                  value={email}
+                  onChangeText={setEmail}
+                  style={globalStyles.input}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+                <View style={localStyles.passwordContainer}>
+                  <TextInput
+                    placeholder="Contraseña"
+                    placeholderTextColor="#999"
+                    value={password}
+                    onChangeText={evaluatePasswordStrength}
+                    style={localStyles.passwordInput}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity style={localStyles.eyeIcon} onPress={() => setShowPassword(!showPassword)}>
+                    <Ionicons name={showPassword ? "eye-off" : "eye"} size={22} color="#999" />
+                  </TouchableOpacity>
                 </View>
-                <Text style={[
-                  localStyles.strengthLabel,
-                  { color: passwordStrength === 1 ? '#ff4444' : passwordStrength === 2 ? '#FFBB33' : '#00C851' }
-                ]}>
-                  {passwordStrength === 1 ? 'Débil' : passwordStrength === 2 ? 'Media' : 'Fuerte'}
-                </Text>
-              </View>
+
+                {!isLogin && password.length > 0 && (
+                  <View style={localStyles.strengthContainer}>
+                    <View style={localStyles.strengthBarBg}>
+                      <View style={[
+                        localStyles.strengthBarFill,
+                        { width: passwordStrength === 1 ? '33%' : passwordStrength === 2 ? '66%' : '100%' },
+                        { backgroundColor: passwordStrength === 1 ? '#ff4444' : passwordStrength === 2 ? '#FFBB33' : '#00C851' }
+                      ]} />
+                    </View>
+                    <Text style={[
+                      localStyles.strengthLabel,
+                      { color: passwordStrength === 1 ? '#ff4444' : passwordStrength === 2 ? '#FFBB33' : '#00C851' }
+                    ]}>
+                      {passwordStrength === 1 ? 'Débil' : passwordStrength === 2 ? 'Media' : 'Fuerte'}
+                    </Text>
+                  </View>
+                )}
+
+                {!isLogin && (
+                  <View style={localStyles.passwordReqContainer}>
+                    <Text style={password.length >= 6 ? localStyles.reqMet : localStyles.reqUnmet}>
+                      {password.length >= 6 ? "✓" : "•"} Debe tener por lo menos 6 caracteres
+                    </Text>
+                    <Text style={/[0-9]/.test(password) && /[^a-zA-Z0-9]/.test(password) ? localStyles.reqMet : localStyles.reqUnmet}>
+                      {/[0-9]/.test(password) && /[^a-zA-Z0-9]/.test(password) ? "✓" : "•"} Debe incluir un número y un carácter que no sea ni una letra ni un número
+                    </Text>
+                    <Text style={/[0-9]/.test(password) && /[A-Z]/.test(password) && /[a-z]/.test(password) ? localStyles.reqMet : localStyles.reqUnmet}>
+                      {/[0-9]/.test(password) && /[A-Z]/.test(password) && /[a-z]/.test(password) ? "✓" : "•"} Debe incluir números y letras mayúsculas y minúsculas
+                    </Text>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={[
+                    globalStyles.btnPrimary,
+                    { marginTop: 10 },
+                    !isFormValid() && !isLogin && { backgroundColor: '#cccccc' }
+                  ]}
+                  onPress={handleAuth}
+                  disabled={loadingAuth || (!isFormValid() && !isLogin)}
+                >
+                  {loadingAuth ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.btnText}>{isLogin ? "Entrar" : "Registrarse"}</Text>}
+                </TouchableOpacity>
+              </>
             )}
 
-            {!isLogin && (
-              <View style={localStyles.passwordReqContainer}>
-                <Text style={password.length >= 6 ? localStyles.reqMet : localStyles.reqUnmet}>
-                  {password.length >= 6 ? "✓" : "•"} Debe tener por lo menos 6 caracteres
-                </Text>
-                <Text style={/[0-9]/.test(password) && /[^a-zA-Z0-9]/.test(password) ? localStyles.reqMet : localStyles.reqUnmet}>
-                  {/[0-9]/.test(password) && /[^a-zA-Z0-9]/.test(password) ? "✓" : "•"} Debe incluir un número y un carácter que no sea ni una letra ni un número
-                </Text>
-                <Text style={/[0-9]/.test(password) && /[A-Z]/.test(password) && /[a-z]/.test(password) ? localStyles.reqMet : localStyles.reqUnmet}>
-                  {/[0-9]/.test(password) && /[A-Z]/.test(password) && /[a-z]/.test(password) ? "✓" : "•"} Debe incluir números y letras mayúsculas y minúsculas
-                </Text>
-              </View>
-            )}
-
-            {/* Usamos el botón azul global de Styles.ts */}
-            <TouchableOpacity
-              style={[
-                globalStyles.btnPrimary,
-                { marginTop: 10 },
-                !isFormValid() && !isLogin && { backgroundColor: '#cccccc' }
-              ]}
-              onPress={handleAuth}
-              disabled={loadingAuth || (!isFormValid() && !isLogin)}
-            >
-              {loadingAuth ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.btnText}>{isLogin ? "Entrar" : "Registrarse"}</Text>}
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={() => setIsLogin(!isLogin)}>
+            <TouchableOpacity onPress={() => {
+              setIsLogin(!isLogin);
+              setPasoRegistroEmpresa(1);
+            }}>
               {/* Usamos el link global de Styles.ts */}
               <Text style={globalStyles.link}>{isLogin ? "¿Nuevo aquí? Crea cuenta" : "Volver al Login"}</Text>
             </TouchableOpacity>
@@ -444,5 +559,12 @@ const localStyles = StyleSheet.create({
   strengthContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, paddingHorizontal: 5 },
   strengthBarBg: { flex: 1, height: 6, backgroundColor: '#E0E0E0', borderRadius: 3, marginRight: 10, overflow: 'hidden' },
   strengthBarFill: { height: '100%', borderRadius: 3 },
-  strengthLabel: { fontSize: 12, fontWeight: 'bold', width: 45, textAlign: 'right' }
+  strengthLabel: { fontSize: 12, fontWeight: 'bold', width: 45, textAlign: 'right' },
+
+  // SII Section
+  siiContainer: { flexDirection: 'row', backgroundColor: '#E8F1FF', padding: 15, borderRadius: 10, alignItems: 'center', marginBottom: 15, gap: 10 },
+  siiText: { flex: 1, color: '#007AFF', fontSize: 13, fontWeight: '500' },
+  paso2Header: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, paddingHorizontal: 5, gap: 8 },
+  paso2Text: { flex: 1, fontSize: 13, color: '#333', fontWeight: '500' },
+  paso2Edit: { color: '#007AFF', fontSize: 13, fontWeight: 'bold' }
 });

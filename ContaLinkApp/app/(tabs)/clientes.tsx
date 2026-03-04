@@ -9,10 +9,11 @@ import {
   Alert,
   FlatList,
   Modal,
-  KeyboardAvoidingView,
   Platform,
   TouchableWithoutFeedback,
-  Keyboard
+  Keyboard,
+  KeyboardAvoidingView,
+  SafeAreaView
 } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
@@ -117,7 +118,7 @@ export default function ClientesScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Mis Clientes</Text>
       </View>
@@ -125,7 +126,7 @@ export default function ClientesScreen() {
       <FlatList
         data={misClientes}
         keyExtractor={(item, index) => item.uid + index}
-        contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 20 }}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Ionicons name="people-circle-outline" size={80} color="#E5E5E5" />
@@ -159,9 +160,7 @@ export default function ClientesScreen() {
         <Ionicons name="person-add" size={28} color="white" />
       </TouchableOpacity>
 
-      {/* ======================================================== */}
-      {/* MODAL OPTIMIZADO PARA EL TECLADO (NUEVO CÓDIGO AQUÍ)     */}
-      {/* ======================================================== */}
+
       <Modal visible={modalVisible} transparent={true} animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -204,13 +203,13 @@ export default function ClientesScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
-  header: { backgroundColor: '#FFFFFF', paddingTop: 60, paddingBottom: 15, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#EAEAEA' },
+  header: { backgroundColor: '#FFFFFF', paddingTop: 20, paddingBottom: 15, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#EAEAEA' },
   headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#101A26' },
 
   // Lista de Clientes

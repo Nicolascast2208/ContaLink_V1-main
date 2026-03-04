@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert, FlatList, Modal, KeyboardAvoidingView, Platform, Share
+  ActivityIndicator, Alert, FlatList, Modal, KeyboardAvoidingView, Platform, Share, SafeAreaView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
@@ -52,6 +52,10 @@ export default function EmpresaColaboradoresScreen() {
   const [rut, setRut] = useState('');
   const [funcion, setFuncion] = useState('');
 
+  // Campos de Contacto
+  const [correoContacto, setCorreoContacto] = useState('');
+  const [telefonoContacto, setTelefonoContacto] = useState('');
+
   useEffect(() => {
     if (!auth.currentUser) return;
     const q = query(
@@ -84,8 +88,8 @@ export default function EmpresaColaboradoresScreen() {
 
   // --- FUNCIÓN: CREAR ---
   const handleCrearColaborador = async () => {
-    if (!nombre.trim() || !apellido.trim() || !rut.trim() || !funcion.trim()) {
-      Alert.alert("Error", "Todos los campos son obligatorios.");
+    if (!nombre.trim() || !apellido.trim() || !rut.trim() || !funcion.trim() || !correoContacto.trim() || !telefonoContacto.trim()) {
+      Alert.alert("Error", "Todos los campos son obligatorios, incluyendo correo y teléfono de contacto.");
       return;
     }
 
@@ -120,6 +124,8 @@ export default function EmpresaColaboradoresScreen() {
         apellido: apellido.trim(),
         rut: limpiarRut(rut),
         funcion: funcion.trim(),
+        correo_contacto: correoContacto.trim(),
+        telefono_contacto: telefonoContacto.trim(),
         correo: correoGenerado,
         password: passwordGenerada
       };
@@ -219,6 +225,8 @@ export default function EmpresaColaboradoresScreen() {
     const colaboradorRut = formatearRutVisual(colaborador.rut || '');
     setRut(colaboradorRut);
     setFuncion(colaborador.funcion);
+    setCorreoContacto(colaborador.correoContacto || '');
+    setTelefonoContacto(colaborador.telefonoContacto || '');
 
     // Obtenemos si existen credenciales guardadas en el DOC del Admin para este RUT
     const credencialesGuardadas = credencialesAdmin[limpiarRut(colaborador.rut || '')];
@@ -229,8 +237,8 @@ export default function EmpresaColaboradoresScreen() {
 
   // --- FUNCIÓN: GUARDAR EDICIÓN ---
   const handleGuardarEdicion = async () => {
-    if (!nombre.trim() || !apellido.trim() || !rut.trim() || !funcion.trim()) {
-      Alert.alert("Error", "Los campos no pueden estar vacíos.");
+    if (!nombre.trim() || !apellido.trim() || !rut.trim() || !funcion.trim() || !correoContacto.trim() || !telefonoContacto.trim()) {
+      Alert.alert("Error", "Todos los campos son obligatorios, incluyendo correo y teléfono de contacto.");
       return;
     }
 
@@ -241,7 +249,9 @@ export default function EmpresaColaboradoresScreen() {
           nombre: nombre.trim(),
           apellido: apellido.trim(),
           rut: limpiarRut(rut),
-          funcion: funcion.trim()
+          funcion: funcion.trim(),
+          correoContacto: correoContacto.trim(),
+          telefonoContacto: telefonoContacto.trim()
         });
         Alert.alert("Actualizado", "Los datos del colaborador se actualizaron correctamente.");
         cerrarModales();
@@ -289,10 +299,11 @@ export default function EmpresaColaboradoresScreen() {
     setCredencialesGeneradas(null);
     setEditingId(null);
     setNombre(''); setApellido(''); setRut(''); setFuncion('');
+    setCorreoContacto(''); setTelefonoContacto('');
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Mis Colaboradores</Text>
       </View>
@@ -304,7 +315,7 @@ export default function EmpresaColaboradoresScreen() {
         <FlatList
           data={colaboradores}
           keyExtractor={item => item.id}
-          contentContainerStyle={{ paddingBottom: 100 }}
+          contentContainerStyle={{ paddingBottom: 20 }}
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Ionicons name="people-outline" size={60} color="#ccc" />
@@ -407,6 +418,12 @@ export default function EmpresaColaboradoresScreen() {
                 <Text style={styles.label}>Cargo / Función</Text>
                 <TextInput style={styles.input} placeholder="Ej: Vendedor de Terreno" value={funcion} onChangeText={setFuncion} />
 
+                <Text style={styles.label}>Correo de Contacto</Text>
+                <TextInput style={styles.input} placeholder="correo@ejemplo.com" value={correoContacto} onChangeText={setCorreoContacto} keyboardType="email-address" autoCapitalize="none" />
+
+                <Text style={styles.label}>Teléfono de Contacto</Text>
+                <TextInput style={styles.input} placeholder="+56912345678" value={telefonoContacto} onChangeText={setTelefonoContacto} keyboardType="phone-pad" />
+
                 <TouchableOpacity style={[styles.btnPrimary, { marginTop: 10 }]} onPress={handleCrearColaborador} disabled={creando}>
                   {creando ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnTextPrimary}>Generar y Crear Acceso</Text>}
                 </TouchableOpacity>
@@ -453,6 +470,12 @@ export default function EmpresaColaboradoresScreen() {
             <Text style={styles.label}>Cargo / Función</Text>
             <TextInput style={styles.input} value={funcion} onChangeText={setFuncion} />
 
+            <Text style={styles.label}>Correo de Contacto</Text>
+            <TextInput style={styles.input} value={correoContacto} onChangeText={setCorreoContacto} keyboardType="email-address" autoCapitalize="none" />
+
+            <Text style={styles.label}>Teléfono de Contacto</Text>
+            <TextInput style={styles.input} value={telefonoContacto} onChangeText={setTelefonoContacto} keyboardType="phone-pad" />
+
             {editingCredenciales && (
               <View style={[styles.credentialsBox, { marginTop: 15, marginBottom: 10, padding: 15 }]}>
                 <Text style={styles.credLabel}>Credenciales Originales:</Text>
@@ -473,13 +496,13 @@ export default function EmpresaColaboradoresScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f4f6f9' },
-  header: { padding: 20, paddingTop: 60, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#eee' },
+  header: { padding: 20, paddingTop: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#eee' },
   headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#333' },
 
   emptyState: { alignItems: 'center', marginTop: 80 },

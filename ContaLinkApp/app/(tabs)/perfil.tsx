@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert, ScrollView, KeyboardAvoidingView, Platform, Share
+  ActivityIndicator, Alert, ScrollView, KeyboardAvoidingView, Platform, Share, SafeAreaView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
@@ -17,6 +17,7 @@ export default function PerfilScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [userData, setUserData] = useState<any>(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   // Estados editables
   const [nombre, setNombre] = useState('');
@@ -80,6 +81,7 @@ export default function PerfilScreen() {
       }
 
       Alert.alert("¡Éxito!", "Perfil actualizado correctamente.");
+      setIsEditing(false);
     } catch (error: any) {
       Alert.alert("Error", error.message || "No se pudo actualizar el perfil.");
     } finally {
@@ -114,7 +116,7 @@ export default function PerfilScreen() {
     if (!codigoGenerado) return;
     try {
       await Share.share({
-        message: `¡Hola! Mi código de acceso para la app ContaLink es: ${codigoGenerado}`,
+        message: `¡Hola! Mi código de acceso para la app ContaLink es: ${codigoGenerado} `,
       });
     } catch (error: any) {
       Alert.alert("Error", "No se pudo compartir el código.");
@@ -152,11 +154,12 @@ export default function PerfilScreen() {
   const getRoleLabel = () => {
     if (userData?.rol === 'admin_empresa') return 'CUENTA EMPRESA';
     if (userData?.rol === 'contador') return 'CUENTA CONTADOR';
+    if (userData?.rol === 'trabajador') return 'CUENTA COLABORADOR';
     return 'CUENTA USUARIO';
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={globalStyles.container}>
+    <SafeAreaView style={globalStyles.container}>
       <ScrollView contentContainerStyle={localStyles.scrollContainer}>
 
         {/* --- CABECERA DEL PERFIL --- */}
@@ -182,17 +185,17 @@ export default function PerfilScreen() {
           {userData?.rol === 'admin_empresa' ? (
             <View style={localStyles.inputGroup}>
               <Text style={localStyles.label}>Razón Social / Nombre de la Empresa</Text>
-              <TextInput style={localStyles.input} value={razonSocial} onChangeText={setRazonSocial} placeholder="Ej: Mi Empresa SpA" />
+              <TextInput style={[localStyles.input, !isEditing && localStyles.inputDisabled]} value={razonSocial} onChangeText={setRazonSocial} placeholder="Ej: Mi Empresa SpA" editable={isEditing} />
             </View>
           ) : (
             <>
               <View style={localStyles.inputGroup}>
                 <Text style={localStyles.label}>Nombre</Text>
-                <TextInput style={localStyles.input} value={nombre} onChangeText={setNombre} placeholder="Tu nombre" />
+                <TextInput style={[localStyles.input, !isEditing && localStyles.inputDisabled]} value={nombre} onChangeText={setNombre} placeholder="Tu nombre" editable={isEditing} />
               </View>
               <View style={localStyles.inputGroup}>
                 <Text style={localStyles.label}>Apellido</Text>
-                <TextInput style={localStyles.input} value={apellido} onChangeText={setApellido} placeholder="Tu apellido" />
+                <TextInput style={[localStyles.input, !isEditing && localStyles.inputDisabled]} value={apellido} onChangeText={setApellido} placeholder="Tu apellido" editable={isEditing} />
               </View>
             </>
           )}
@@ -208,7 +211,7 @@ export default function PerfilScreen() {
           </View>
 
           {/* --- SECCIÓN CÓDIGO CONTADOR --- */}
-          {userData?.rol !== 'contador' && (
+          {userData?.rol !== 'contador' && userData?.rol !== 'trabajador' && (
             <View style={localStyles.codeCard}>
               <Text style={localStyles.codeTitle}>Vincular con tu Contador</Text>
               <Text style={localStyles.codeSubtitle}>Dale este código a tu contador para que te agregue a su cartera y gestione tus documentos.</Text>
@@ -251,9 +254,15 @@ export default function PerfilScreen() {
             </View>
           )}
 
-          <TouchableOpacity style={localStyles.btnPrimary} onPress={handleGuardarCambios} disabled={saving}>
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={localStyles.btnTextPrimary}>Guardar Cambios</Text>}
-          </TouchableOpacity>
+          {!isEditing ? (
+            <TouchableOpacity style={localStyles.btnPrimary} onPress={() => setIsEditing(true)}>
+              <Text style={localStyles.btnTextPrimary}>Editar Perfil</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={localStyles.btnPrimary} onPress={handleGuardarCambios} disabled={saving}>
+              {saving ? <ActivityIndicator color="#fff" /> : <Text style={localStyles.btnTextPrimary}>Guardar Cambios</Text>}
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity style={[localStyles.btnOutline, { borderColor: '#007AFF', marginBottom: 15 }]} onPress={handleManageSubscription}>
             <Ionicons name="card-outline" size={20} color="#007AFF" style={{ marginRight: 8 }} />
@@ -267,14 +276,14 @@ export default function PerfilScreen() {
 
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 // Estilos específicos de esta pantalla
 const localStyles = StyleSheet.create({
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8f9fa' },
-  scrollContainer: { flexGrow: 1, padding: 24, paddingTop: Platform.OS === 'ios' ? 70 : 50, alignItems: 'center' },
+  scrollContainer: { flexGrow: 1, padding: 24, paddingTop: Platform.OS === 'ios' ? 20 : 10, alignItems: 'center' },
 
   headerProfile: { alignItems: 'center', marginBottom: 40 },
   avatarCircle: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#E8F1FF', justifyContent: 'center', alignItems: 'center', marginBottom: 15 },

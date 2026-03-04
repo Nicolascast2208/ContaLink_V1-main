@@ -81,8 +81,8 @@ export default function TabLayout() {
             backgroundColor: '#ffffff',
             borderTopWidth: 1,
             borderTopColor: '#EAEAEA',
-            height: Platform.OS === 'ios' ? 85 : 65, // Ajuste para el notch de iOS
-            paddingBottom: Platform.OS === 'ios' ? 25 : 10,
+            height: Platform.OS === 'ios' ? 65 : 55, // Reducido
+            paddingBottom: Platform.OS === 'ios' ? 10 : 5, // Reducido
             paddingTop: 5,
           },
         }}>

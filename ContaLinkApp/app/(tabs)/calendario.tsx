@@ -51,8 +51,12 @@ export default function CalendarioScreen() {
 
     const unsubDb = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setRawGastos(docs);
-      procesarDatos(docs);
+
+      // Filtrar para mostrar UNICAMENTE los aprobados en todo el historial
+      const approvedDocs = docs.filter((item: any) => item.estadoAprobacion === 'Aprobado');
+
+      setRawGastos(approvedDocs);
+      procesarDatos(approvedDocs);
       setLoading(false);
     });
     return () => unsubDb();
@@ -85,7 +89,11 @@ export default function CalendarioScreen() {
         if (!meses[mesStr]) {
           meses[mesStr] = { nombre: mesStr, total: 0, orden: fechaObj.getTime() };
         }
-        meses[mesStr].total += (item.monto || 0);
+
+        // Sumamos al total del mes SOLO si el gasto está aprobado
+        if (item.estadoAprobacion === 'Aprobado') {
+          meses[mesStr].total += (item.monto || 0);
+        }
       }
     });
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, FlatList, Modal, Image, ActivityIndicator, Alert,
-  RefreshControl, TextInput, KeyboardAvoidingView, Platform, StyleSheet, ScrollView, Dimensions
+  RefreshControl, TextInput, KeyboardAvoidingView, Platform, StyleSheet, ScrollView, Dimensions, SafeAreaView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getDownloadURL, ref } from 'firebase/storage';
@@ -29,13 +29,14 @@ const formatPesos = (valor: string | number) => {
 interface Boleta {
   id: string; uid: string; archivo: string; ruta: string; fechaSubida: any;
   estado: string; monto: number; comercio: string; rut?: string; giro?: string;
-  fechaDetectada?: string; glosa?: string; tipoDocumento?: string; numeroDocumento?: string;
+  fechaDetectada?: string; glosa?: string; tipoDocumento?: 'Boleta' | 'Factura'; numeroDocumento?: string;
+  motivoRechazo?: string;
   miniaturaBase64?: string; iva?: number;
   estadoAprobacion?: string; empresaId?: string;
 }
 
 export default function HomeScreen({ user }: { user: any }) {
-  const { boletas, loading, agregarGasto, borrarGasto, editarGasto } = useGastos(user);
+  const { boletas, loading, empresaNombre, agregarGasto, eliminarGasto, editarGasto } = useGastos(user);
 
   const [refreshing, setRefreshing] = useState(false);
   const [totalMes, setTotalMes] = useState(0);
@@ -45,9 +46,13 @@ export default function HomeScreen({ user }: { user: any }) {
   const [uploading, setUploading] = useState(false);
 
   const [loadingImage, setLoadingImage] = useState(false);
-  const [viewingItem, setViewingItem] = useState<{ url: string, isPdf: boolean } | null>(null);
+
+  const [selectedDocumentUrl, setSelectedDocumentUrl] = useState<string | null>(null);
+  const [selectedIsPdf, setSelectedIsPdf] = useState<boolean>(false);
+  const [isFullScreenViewerVisible, setIsFullScreenViewerVisible] = useState(false);
 
   const [editingBoleta, setEditingBoleta] = useState<Boleta | null>(null);
+  const [isEditingMode, setIsEditingMode] = useState(false);
   const [tempComercio, setTempComercio] = useState('');
   const [tempMonto, setTempMonto] = useState('');
   const [tempIva, setTempIva] = useState('');
@@ -66,7 +71,9 @@ export default function HomeScreen({ user }: { user: any }) {
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
     const suma = boletas.reduce((acc, item) => {
-      if (item.estado === 'Duplicado' || item.estadoAprobacion === 'Rechazado') return acc;
+      // Sumar al total SOLAMENTE si el gasto está APROBADO
+      if (item.estado === 'Duplicado' || item.estadoAprobacion !== 'Aprobado') return acc;
+
       if (!item.fechaSubida) return acc;
       const fecha = item.fechaSubida.toDate ? item.fechaSubida.toDate() : new Date(item.fechaSubida);
       if (fecha.getMonth() === currentMonth && fecha.getFullYear() === currentYear) {
@@ -76,6 +83,19 @@ export default function HomeScreen({ user }: { user: any }) {
     }, 0);
     setTotalMes(suma);
   }, [boletas]);
+
+  useEffect(() => {
+    if (editingBoleta?.ruta) {
+      getDownloadURL(ref(storage, editingBoleta.ruta))
+        .then(url => {
+          setSelectedDocumentUrl(url);
+          setSelectedIsPdf(editingBoleta.ruta.toLowerCase().endsWith('.pdf'));
+        })
+        .catch(() => setSelectedDocumentUrl(null));
+    } else {
+      setSelectedDocumentUrl(null);
+    }
+  }, [editingBoleta]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true); setTimeout(() => setRefreshing(false), 1000);
@@ -125,6 +145,10 @@ export default function HomeScreen({ user }: { user: any }) {
 
   const handleGuardarEdicion = async () => {
     if (!editingBoleta) return;
+    if (!tempGlosa || tempGlosa.trim() === '') {
+      Alert.alert("Campo Obligatorio", "Por favor ingresa una glosa/motivo para este documento.");
+      return;
+    }
     setSavingEdit(true);
     try {
       const montoLimpio = parseInt(tempMonto.replace(/[^0-9]/g, '')) || 0;
@@ -139,11 +163,12 @@ export default function HomeScreen({ user }: { user: any }) {
     Alert.alert("Eliminar", "¿Seguro que deseas eliminar este gasto?", [
       { text: "Cancelar" },
       {
-        text: "Sí, Eliminar", style: "destructive", onPress: async () => {
+        text: "Eliminar", style: "destructive", onPress: async () => {
           setDeletingId(id);
           try {
-            await borrarGasto(id, ruta);
-            setEditingBoleta(null);
+            await eliminarGasto(id, ruta);
+            setEditingBoleta(null); // Assuming setEditingBoleta(null) closes the modal
+            Alert.alert("Éxito", "Gasto eliminado correctamente.");
           } catch (e: any) { Alert.alert("Error", e.message); }
           finally { setDeletingId(null); }
         }
@@ -152,6 +177,8 @@ export default function HomeScreen({ user }: { user: any }) {
   };
 
   const iniciarEdicion = (boleta: Boleta) => {
+    setIsFullScreenViewerVisible(false);
+    setIsEditingMode(false);
     setEditingBoleta(boleta);
     setTempComercio(boleta.comercio || '');
     setTempMonto(formatPesos(boleta.monto));
@@ -162,16 +189,6 @@ export default function HomeScreen({ user }: { user: any }) {
     setTempGlosa(boleta.glosa || '');
     setTempTipoDoc(boleta.tipoDocumento || 'Boleta');
     setTempNumeroDoc(boleta.numeroDocumento || '');
-  };
-
-  const handleVerDocumento = async (rutaStorage: string) => {
-    setLoadingImage(true);
-    try {
-      const url = await getDownloadURL(ref(storage, rutaStorage));
-      const isPdf = rutaStorage.toLowerCase().endsWith('.pdf');
-      setViewingItem({ url, isPdf });
-    } catch (e) { Alert.alert("Error", "Documento no disponible"); }
-    finally { setLoadingImage(false); }
   };
 
   const mostrarOpciones = () => {
@@ -199,13 +216,23 @@ export default function HomeScreen({ user }: { user: any }) {
   const nombreMes = new Date().toLocaleString('es-ES', { month: 'long' });
   const nombreMesCap = nombreMes.charAt(0).toUpperCase() + nombreMes.slice(1);
 
-  const isReadOnly = editingBoleta?.estadoAprobacion === 'Aprobado';
+  const isApproved = editingBoleta?.estadoAprobacion === 'Aprobado';
+  const isReadOnly = isApproved || !isEditingMode;
 
   return (
     <View style={styles.container}>
       {/* ESPACIO SUPERIOR CORREGIDO */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Mis Gastos</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <Text style={styles.headerTitle}>Mis Gastos</Text>
+          {empresaNombre && (
+            <View style={{ backgroundColor: '#E8F1FF', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginTop: 5 }}>
+              <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#007AFF' }}>
+                <Ionicons name="business" size={12} color="#007AFF" /> {empresaNombre}
+              </Text>
+            </View>
+          )}
+        </View>
       </View>
 
       <View style={styles.summaryContainer}>
@@ -269,40 +296,48 @@ export default function HomeScreen({ user }: { user: any }) {
       </TouchableOpacity>
 
       {/* --- MODAL UPLOAD --- */}
-      <Modal visible={showConfirm} animationType="slide">
-        <View style={styles.cameraContainer}>
-          <View style={{ flex: 1, width: '100%', backgroundColor: '#f4f4f4', justifyContent: 'center', alignItems: 'center' }}>
-            {selectedFile?.isPdf ? (
-              <Pdf source={{ uri: selectedFile.uri }} style={{ flex: 1, width: width, height: height }} fitPolicy={0} trustAllCerts={false} />
-            ) : (
-              selectedFile && <Image source={{ uri: selectedFile.uri }} style={{ flex: 1, width: '100%' }} resizeMode="contain" />
-            )}
+      <Modal visible={showConfirm} animationType="slide" transparent={false}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#f8f9fa' }}>
+          {/* Header */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderColor: '#eee', backgroundColor: 'white' }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#333' }}>Nuevo Documento</Text>
+            <TouchableOpacity onPress={() => { setShowConfirm(false); setSelectedFile(null); }}>
+              <Ionicons name="close" size={28} color="#666" />
+            </TouchableOpacity>
           </View>
-          {uploading ? <View style={styles.loadingOverlay}><ActivityIndicator size="large" color="white" /><Text style={{ color: 'white', marginTop: 10 }}>Subiendo...</Text></View> :
-            <View style={styles.controls}>
-              <TouchableOpacity style={styles.btnCancel} onPress={() => { setShowConfirm(false); setSelectedFile(null); }}><Text style={styles.btnText}>Cancelar</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.btnConfirm} onPress={handleUpload}><Text style={styles.btnText}>Confirmar</Text></TouchableOpacity>
-            </View>
-          }
-        </View>
-      </Modal>
 
-      {/* --- MODAL VIEWER NATIVO --- */}
-      <Modal visible={!!viewingItem || loadingImage} transparent={true} animationType="fade" onRequestClose={() => setViewingItem(null)}>
-        <View style={styles.viewerContainer}>
-          <TouchableOpacity style={styles.btnCloseViewer} onPress={() => setViewingItem(null)}>
-            <Ionicons name="close" size={30} color="white" />
-          </TouchableOpacity>
-          {loadingImage ? <ActivityIndicator size="large" color="white" /> : viewingItem && (
-            viewingItem.isPdf ? (
-              <View style={{ flex: 1, width: width, height: height, marginTop: 50 }}>
-                <Pdf source={{ uri: viewingItem.url }} style={{ flex: 1, width: width }} fitPolicy={0} trustAllCerts={false} />
-              </View>
-            ) : (
-              <Image source={{ uri: viewingItem.url }} style={{ flex: 1, width: '100%', height: '100%' }} resizeMode="contain" />
-            )
-          )}
-        </View>
+          {/* Content Area */}
+          <View style={{ flex: 1, padding: 20 }}>
+            {/* Preview Card */}
+            <View style={{ flex: 1, backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 5 }}>
+              {selectedFile?.isPdf ? (
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f4f4f4' }}>
+                  <Ionicons name="document-text" size={60} color="#007AFF" />
+                  <Text style={{ marginTop: 10, color: '#666', fontWeight: '500' }}>Documento PDF</Text>
+                </View>
+              ) : (
+                selectedFile && <Image source={{ uri: selectedFile.uri }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+              )}
+            </View>
+          </View>
+
+          {/* Footer Buttons */}
+          <View style={{ padding: 20, backgroundColor: 'white', borderTopWidth: 1, borderColor: '#eee' }}>
+            <TouchableOpacity
+              disabled={uploading}
+              style={{ backgroundColor: '#007AFF', paddingVertical: 18, borderRadius: 14, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', shadowColor: '#007AFF', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 }}
+              onPress={handleUpload}
+            >
+              {uploading ? <ActivityIndicator color="white" /> : (
+                <>
+                  <Ionicons name="cloud-upload-outline" size={24} color="white" style={{ marginRight: 8 }} />
+                  <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>Subir Documento</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
+        </SafeAreaView>
       </Modal>
 
       {/* ==========================================================
@@ -322,26 +357,41 @@ export default function HomeScreen({ user }: { user: any }) {
 
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
 
+                {/* Visor de documento integrado */}
                 <TouchableOpacity
-                  style={styles.btnVerDoc}
-                  onPress={() => handleVerDocumento(editingBoleta.ruta)}
-                  disabled={loadingImage}
+                  activeOpacity={0.8}
+                  onPress={() => { if (selectedDocumentUrl) setIsFullScreenViewerVisible(true); }}
+                  style={{ width: '100%', height: 350, backgroundColor: '#f0f0f0', borderRadius: 12, marginBottom: 20, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' }}
                 >
-                  {loadingImage ? <ActivityIndicator color="#007AFF" /> : (
-                    <>
-                      <Ionicons name="scan-outline" size={20} color="#007AFF" style={{ marginRight: 8 }} />
-                      <Text style={styles.textVerDoc}>Ver Documento Original</Text>
-                    </>
+                  {!selectedDocumentUrl ? (
+                    <ActivityIndicator size="large" color="#007AFF" />
+                  ) : selectedIsPdf ? (
+                    <View pointerEvents="none" style={{ flex: 1, width: '100%' }}>
+                      <Pdf source={{ uri: selectedDocumentUrl }} style={{ flex: 1, width: '100%' }} fitPolicy={0} trustAllCerts={false} />
+                    </View>
+                  ) : (
+                    <Image source={{ uri: selectedDocumentUrl }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
                   )}
                 </TouchableOpacity>
 
-                {isReadOnly && (
+                {isApproved && (
                   <View style={styles.alertBox}>
                     <Text style={{ textAlign: 'center', color: '#00C851', fontWeight: 'bold', fontSize: 15 }}>
                       ✅ Documento Aprobado
                     </Text>
                     <Text style={{ textAlign: 'center', color: '#666', marginTop: 5, fontSize: 13 }}>
                       Este gasto ya fue revisado y validado. No se puede modificar ni eliminar.
+                    </Text>
+                  </View>
+                )}
+
+                {editingBoleta?.estadoAprobacion === 'Rechazado' && editingBoleta?.motivoRechazo && (
+                  <View style={[styles.alertBox, { backgroundColor: '#ffebe6', borderWidth: 1, borderColor: '#ff4444' }]}>
+                    <Text style={{ textAlign: 'center', color: '#ff4444', fontWeight: 'bold', fontSize: 15 }}>
+                      ❌ Documento Rechazado
+                    </Text>
+                    <Text style={{ textAlign: 'center', color: '#d32f2f', marginTop: 5, fontSize: 13, fontWeight: '500' }}>
+                      Motivo: {editingBoleta.motivoRechazo}
                     </Text>
                   </View>
                 )}
@@ -403,7 +453,7 @@ export default function HomeScreen({ user }: { user: any }) {
                   <TextInput style={[styles.inputEdit, isReadOnly && styles.inputDisabled]} editable={!isReadOnly} value={tempGlosa} onChangeText={setTempGlosa} placeholder="Ej: Cena con clientes" />
                 </View>
 
-                {!isReadOnly && (
+                {!isApproved && (
                   <View style={styles.actions}>
                     <TouchableOpacity style={[styles.btnAction, styles.btnEliminar]} onPress={() => handleEliminarBoleta(editingBoleta.id, editingBoleta.ruta)}>
                       {deletingId === editingBoleta.id ? <ActivityIndicator color="#ff4444" /> : (
@@ -414,22 +464,45 @@ export default function HomeScreen({ user }: { user: any }) {
                       )}
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={[styles.btnAction, styles.btnGuardar]} onPress={handleGuardarEdicion} disabled={savingEdit}>
-                      {savingEdit ? <ActivityIndicator color="#fff" /> : (
-                        <>
-                          <Ionicons name="save-outline" size={22} color="#fff" />
-                          <Text style={styles.textGuardar}>Guardar</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
+                    {!isEditingMode ? (
+                      <TouchableOpacity style={[styles.btnAction, { backgroundColor: '#f0f0f0', borderColor: '#ccc', borderWidth: 1 }]} onPress={() => setIsEditingMode(true)}>
+                        <Ionicons name="pencil-outline" size={22} color="#333" />
+                        <Text style={{ color: '#333', fontSize: 16, fontWeight: 'bold', marginLeft: 8 }}>Editar</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity style={[styles.btnAction, styles.btnGuardar]} onPress={handleGuardarEdicion} disabled={savingEdit}>
+                        {savingEdit ? <ActivityIndicator color="#fff" /> : (
+                          <>
+                            <Ionicons name="save-outline" size={22} color="#fff" />
+                            <Text style={styles.textGuardar}>Guardar</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    )}
                   </View>
                 )}
               </ScrollView>
+
+              {/* VISOR PANTALLA COMPLETA SOBRE EL MODAL */}
+              {isFullScreenViewerVisible && selectedDocumentUrl && (
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black', zIndex: 999 }]}>
+                  <TouchableOpacity style={{ position: 'absolute', top: 50, right: 20, zIndex: 1000 }} onPress={() => setIsFullScreenViewerVisible(false)}>
+                    <Ionicons name="close" size={35} color="white" />
+                  </TouchableOpacity>
+                  {selectedIsPdf ? (
+                    <View style={{ flex: 1, width: width, height: height, marginTop: 100 }}>
+                      <Pdf source={{ uri: selectedDocumentUrl }} style={{ flex: 1, width: width }} fitPolicy={0} trustAllCerts={false} />
+                    </View>
+                  ) : (
+                    <Image source={{ uri: selectedDocumentUrl }} style={{ flex: 1, width: '100%', height: '100%' }} resizeMode="stretch" />
+                  )}
+                </View>
+              )}
             </View>
           </KeyboardAvoidingView>
         )}
       </Modal>
-    </View>
+    </View >
   );
 }
 

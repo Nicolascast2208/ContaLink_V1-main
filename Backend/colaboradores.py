@@ -18,6 +18,8 @@ def registrar_colaborador(db, datos):
             'apellido': datos['apellido'],
             'rut': datos['rut'],
             'funcion': datos['funcion'],
+            'correoContacto': datos.get('correo_contacto', ''),
+            'telefonoContacto': datos.get('telefono_contacto', ''),
             'rol': 'trabajador', # Rol clave para el nuevo flujo
             'empresaId': datos['empresa_uid'], # Vinculamos al trabajador con su jefe
             'fechaRegistro': datetime.now(),

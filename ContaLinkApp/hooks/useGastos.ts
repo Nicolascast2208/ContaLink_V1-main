@@ -9,6 +9,7 @@ const API_URL = "https://cerebro-api-807808449081.us-central1.run.app/procesar_b
 export const useGastos = (user: any) => {
   const [boletas, setBoletas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [empresaNombre, setEmpresaNombre] = useState<string | null>(null);
 
   // Escucha boletas en tiempo real
   useEffect(() => {
@@ -19,6 +20,56 @@ export const useGastos = (user: any) => {
       setBoletas(docs);
       setLoading(false);
     });
+
+    // Cargar nombre de la empresa
+    const fetchEmpresa = async () => {
+      try {
+        const perfilSnap = await getDoc(doc(db, "usuarios", user.uid));
+        if (perfilSnap.exists()) {
+          const data = perfilSnap.data();
+          const { empresaId, rol } = data;
+
+          // Si el trabajador ya tiene el nombre guardado en su perfil, usamos ese.
+          if (data.empresaNombre) {
+            setEmpresaNombre(data.empresaNombre);
+            return;
+          }
+
+          const idEmpresaBuscar = rol === 'admin_empresa' ? user.uid : empresaId;
+
+          if (idEmpresaBuscar) {
+            // Intento 1: Buscar la Razón Social en el perfil del Administrador (tabla usuarios)
+            try {
+              const adminSnap = await getDoc(doc(db, "usuarios", idEmpresaBuscar));
+              if (adminSnap.exists() && adminSnap.data().razonSocial) {
+                setEmpresaNombre(adminSnap.data().razonSocial);
+                return; // Éxito
+              }
+            } catch (errAdmin) {
+              console.log("No se pudo leer el perfil del admin");
+            }
+
+            // Intento 2: Buscar en la colección empresas (por si existe)
+            try {
+              const empresaSnap = await getDoc(doc(db, "empresas", idEmpresaBuscar));
+              if (empresaSnap.exists() && empresaSnap.data().nombre) {
+                setEmpresaNombre(empresaSnap.data().nombre);
+                return; // Éxito
+              }
+            } catch (err) {
+              console.log("No se pudo leer la colección de empresas por permisos.");
+            }
+
+            // Si todo falla, mostrar nombre genérico
+            setEmpresaNombre("Mi Organización");
+          }
+        }
+      } catch (error) {
+        console.log("Error al cargar el perfil del usuario:", error);
+      }
+    };
+    fetchEmpresa();
+
     return () => unsubscribe();
   }, [user]);
 
@@ -60,6 +111,8 @@ export const useGastos = (user: any) => {
       const perfilData = perfilSnap.exists() ? perfilSnap.data() : null;
 
       const esTrabajador = perfilData?.rol === 'trabajador';
+      const esAdminEmpresa = perfilData?.rol === 'admin_empresa';
+      const assignedEmpresaId = esAdminEmpresa ? user.uid : (perfilData?.empresaId || null);
 
       // Guardar datos en Firestore 
       await addDoc(collection(db, "gastos"), {
@@ -78,9 +131,9 @@ export const useGastos = (user: any) => {
         tipoDocumento: "Boleta",
         numeroDocumento: "",
         // --- CAMPOS DE APROBACIÓN EMPRESARIAL ---
-        empresaId: perfilData?.empresaId || null,
-        estadoAprobacion: esTrabajador ? 'Pendiente' : 'Aprobado', // Si es jefe o natural, se auto-aprueba
-        nombreTrabajador: esTrabajador ? `${perfilData.nombre} ${perfilData.apellido}` : 'Yo'
+        empresaId: assignedEmpresaId,
+        estadoAprobacion: 'Pendiente', // Todos entran a ciclo de revisión, incluyendo al Admin
+        nombreTrabajador: esTrabajador ? `${perfilData.nombre} ${perfilData.apellido}` : 'Propietario (Admin)'
       });
 
       // Llamar al cerebro en Python
@@ -91,20 +144,27 @@ export const useGastos = (user: any) => {
           body: JSON.stringify({ ruta_archivo: rutaStorage })
         });
       } catch (apiError) {
-        console.error("No se pudo contactar al servidor Python:", apiError);
+        console.error("Error llamando a la IA:", apiError);
       }
       return true;
-    } catch (error: any) {
-      console.error("Error subiendo:", error);
-      throw error;
+    } catch (e: any) {
+      console.error(e);
+      throw new Error("No se pudo agregar el gasto: " + e.message);
     }
   };
 
-  const borrarGasto = async (id: string, ruta: string) => {
+  const eliminarGasto = async (id: string, ruta: string) => {
     try {
+      if (ruta) {
+        const fileRef = ref(storage, ruta);
+        await deleteObject(fileRef).catch(e => console.log("Archivo ya eliminado o sin acceso", e));
+      }
       await deleteDoc(doc(db, "gastos", id));
-      await deleteObject(ref(storage, ruta)).catch(() => console.log("Imagen no encontrada en storage"));
-    } catch (error) { throw error; }
+      return true;
+    } catch (e: any) {
+      console.error(e);
+      throw new Error("No se pudo eliminar el gasto: " + e.message);
+    }
   };
 
   // --- FUNCIÓN EDITAR ACTUALIZADA PARA RECIBIR EL IVA ---
@@ -136,5 +196,5 @@ export const useGastos = (user: any) => {
     } catch (error) { throw error; }
   };
 
-  return { boletas, loading, agregarGasto, borrarGasto, editarGasto };
+  return { boletas, loading, empresaNombre, agregarGasto, eliminarGasto, editarGasto };
 };

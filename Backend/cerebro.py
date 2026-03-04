@@ -232,6 +232,8 @@ def registrar_colaborador(db_client, datos):
             'apellido': datos['apellido'],
             'rut': datos['rut'],
             'funcion': datos['funcion'],
+            'correoContacto': datos.get('correo_contacto', ''),
+            'telefonoContacto': datos.get('telefono_contacto', ''),
             'rol': 'trabajador', 
             'empresaId': datos['empresa_uid'], 
             'fechaRegistro': datetime.now(),
@@ -309,6 +311,31 @@ def crear_colaborador_endpoint():
         return jsonify(resultado), 200
     else:
         return jsonify({"error": resultado['mensaje']}), 500
+
+@app.route('/consultar_rut', methods=['POST'])
+def consultar_rut_endpoint():
+    datos = request.get_json()
+    rut = datos.get('rut') if datos else None
+    
+    if not rut:
+        return jsonify({"error": "No se proporcionó el RUT"}), 400
+        
+    try:
+        # Llamamos a la función existente que raspa el SII
+        info_sii = consultar_rut_sii(rut)
+        
+        if info_sii:
+            return jsonify({
+                "status": "exito",
+                "razon_social": info_sii.get('razon_social', ''),
+                "giro": info_sii.get('giro', '')
+            }), 200
+        else:
+            return jsonify({"error": "No se encontró información o el RUT no es de empresa"}), 404
+            
+    except Exception as e:
+        print(f"❌ Error al consultar SII independientemente: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     puerto = int(os.environ.get("PORT", 8080))
