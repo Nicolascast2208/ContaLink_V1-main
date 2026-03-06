@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Dimensions, TouchableOpacity } from 'react-native';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { PieChart } from 'react-native-gifted-charts';
+import { Ionicons } from '@expo/vector-icons';
 
 import { auth, db } from '../../utils/firebaseconfig';
+import { generarReporteExcel } from '../../utils/procesamiento_excel';
 
 const { width } = Dimensions.get('window');
 
@@ -21,6 +23,9 @@ export default function EmpresaGraficosScreen() {
     const [user, setUser] = useState<any>(null);
     const [empresaId, setEmpresaId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+
+    // Array maestro de gastos aprobados para el Excel
+    const [rawGastosAprobados, setRawGastosAprobados] = useState<any[]>([]);
 
     // Stats
     const [totalBoletas, setTotalBoletas] = useState(0);
@@ -56,6 +61,7 @@ export default function EmpresaGraficosScreen() {
                     let cPendiente = 0;
                     const colabsResumen: Record<string, { cantidad: number; monto: number }> = {};
                     const categoriasResumen: Record<string, { cantidad: number, monto: number }> = {};
+                    const listaAprobados: any[] = [];
 
                     snapshot.forEach(doc => {
                         const data = doc.data() as Gasto;
@@ -71,6 +77,7 @@ export default function EmpresaGraficosScreen() {
                         if (estado === 'Aprobado') {
                             cAprobado++;
                             sumAprobado += monto;
+                            listaAprobados.push(data);
                         } else if (estado === 'Rechazado') {
                             cRechazado++;
                         } else {
@@ -109,6 +116,7 @@ export default function EmpresaGraficosScreen() {
 
                     setColaboradorStats(sortedColabs);
                     setCategoriasStats(sortedCategorias);
+                    setRawGastosAprobados(listaAprobados);
                     setLoading(false);
                 }, (error) => {
                     console.error("Error cargando estadísticas: ", error);
@@ -143,8 +151,15 @@ export default function EmpresaGraficosScreen() {
 
     return (
         <View style={styles.container}>
-            <View style={styles.header}>
+            <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
                 <Text style={styles.headerTitle}>Panel de Métricas</Text>
+                <TouchableOpacity
+                    onPress={() => generarReporteExcel(rawGastosAprobados, user?.displayName || user?.email?.split('@')[0] || "Administrador", true)}
+                    style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#eef6ff', padding: 8, borderRadius: 8 }}
+                >
+                    <Ionicons name="share-outline" size={24} color="#007AFF" />
+                    <Text style={{ color: '#007AFF', fontWeight: '600', marginLeft: 5 }}>Exportar</Text>
+                </TouchableOpacity>
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent}>

@@ -6,9 +6,11 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { StatusBar } from 'expo-status-bar';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../../utils/firebaseconfig';
 import { configureRevenueCat } from '../../utils/revenuecat';
 import LoginScreen from '../screens/LoginScreen'; // Ajusta la ruta si es necesario
+import OnboardingScreen from '../screens/OnboardingScreen';
 
 // Inicializamos RevenueCat al arrancar la app
 configureRevenueCat();
@@ -17,23 +19,43 @@ export default function TabLayout() {
   const [user, setUser] = useState<any>(null);
   const [rol, setRol] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(true);
+  const [viewedOnboarding, setViewedOnboarding] = useState<boolean | null>(null);
 
   const router = useRouter();
+
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      try {
+        const value = await AsyncStorage.getItem('@viewedOnboarding');
+        setViewedOnboarding(value !== null);
+      } catch (err) {
+        setViewedOnboarding(false);
+      }
+    };
+    checkOnboarding();
+  }, []);
   const pathname = usePathname();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      console.log(" Auth state changed. User:", currentUser ? currentUser.uid : "null");
       if (currentUser) {
         setUser(currentUser);
         try {
           const docRef = doc(db, "usuarios", currentUser.uid);
           const docSnap = await getDoc(docRef);
 
+          console.log(" DocSnap exists?", docSnap.exists());
           if (docSnap.exists()) {
-            setRol(docSnap.data().rol); // Puede ser: 'persona_natural', 'admin_empresa', 'contador'
+            console.log(" Usuario data:", docSnap.data());
+            setRol(docSnap.data().rol || 'persona_natural'); // Fallback si no tiene rol
+          } else {
+            console.log(" Usuario no existe en Firestore, forzando rol por defecto");
+            setRol('persona_natural'); // Asignar un rol por defecto para salir del loop
           }
         } catch (e) {
-          console.error("Error al obtener rol:", e);
+          console.error(" Error al obtener rol:", e);
+          setRol('error'); // Evitar loop infinito
         }
       } else {
         setUser(null);
@@ -59,7 +81,7 @@ export default function TabLayout() {
     }
   }, [initializing, user, rol, pathname]);
 
-  if (initializing || (user && rol === null)) {
+  if (initializing || (user && rol === null) || (!user && viewedOnboarding === null)) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff' }}>
         <ActivityIndicator size="large" color="#007AFF" />
@@ -67,7 +89,19 @@ export default function TabLayout() {
     );
   }
 
-  if (!user) return <LoginScreen />;
+  if (!user) {
+    if (!viewedOnboarding) {
+      return (
+        <OnboardingScreen
+          onFinish={async () => {
+            await AsyncStorage.setItem('@viewedOnboarding', 'true');
+            setViewedOnboarding(true);
+          }}
+        />
+      );
+    }
+    return <LoginScreen />;
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>

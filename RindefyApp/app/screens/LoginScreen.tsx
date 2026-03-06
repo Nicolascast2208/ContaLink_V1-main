@@ -170,7 +170,7 @@ export default function LoginScreen() {
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     clientId: '807808449081-0hei11dh9m3bdb7shgt2cg5ll1ba6ed8.apps.googleusercontent.com',
-    redirectUri: makeRedirectUri({ scheme: 'contalink' })
+    redirectUri: makeRedirectUri({ scheme: 'rindefy' })
   });
 
   const handleAuth = async () => {
@@ -299,7 +299,9 @@ export default function LoginScreen() {
       <StatusBar style="dark" />
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={localStyles.scrollContent} keyboardShouldPersistTaps="handled">
-          <Image source={require('../../assets/images/contalink_logo.png')} style={localStyles.logo} resizeMode="contain" />
+          <View style={localStyles.logoContainer}>
+            <Image source={require('../../assets/images/rindefy_logo.png')} style={localStyles.logo} resizeMode="cover" />
+          </View>
 
           <View style={localStyles.formContainer}>
             {!isLogin && (
@@ -543,7 +545,18 @@ export default function LoginScreen() {
 
 const localStyles = StyleSheet.create({
   scrollContent: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 24, paddingTop: Platform.OS === 'ios' ? 60 : 40 },
-  logo: { width: 180, height: 180, marginBottom: 20 },
+  logoContainer: {
+    width: 320,
+    height: 180,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  logo: {
+    width: 380,   // "Muerte" de los bordes laterales
+    height: 200,  // "Muerte" de los bordes superior/inferior
+  },
   formContainer: { width: '100%', maxWidth: 400 },
 
   roleSelector: { flexDirection: 'row', backgroundColor: '#F5F5F5', borderRadius: 12, padding: 4, marginBottom: 15 },

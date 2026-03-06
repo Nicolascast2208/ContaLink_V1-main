@@ -104,12 +104,12 @@ export default function EmpresaColaboradoresScreen() {
       const adminEmail = auth.currentUser?.email || '';
       const dominioAdmin = adminEmail.split('@')[1] || '';
 
-      let dominioFinal = 'contalink.app';
+      let dominioFinal = 'rindefy.app';
 
       if (dominiosGenericos.includes(dominioAdmin) || !dominioAdmin) {
         // Dominio genérico => crear subdominio basado en el nombre de la empresa
         const nombreEmpresa = auth.currentUser?.displayName ? limpiarTexto(auth.currentUser.displayName) : 'empresa';
-        dominioFinal = `${nombreEmpresa}.contalink.app`;
+        dominioFinal = `${nombreEmpresa}.rindefy.app`;
       } else {
         // Dominio corporativo privado => usar el mismo que el dueño
         dominioFinal = dominioAdmin;
@@ -166,7 +166,7 @@ export default function EmpresaColaboradoresScreen() {
   const handleCompartirCredenciales = async () => {
     if (!credencialesGeneradas) return;
     try {
-      const mensaje = `¡Hola! Bienvenido a Contalink. Aquí tienes tus credenciales de acceso:\n\n👤 Correo: ${credencialesGeneradas.correo}\n🔑 Contraseña: ${credencialesGeneradas.pass}\n\nPor favor, ingresa a la app con estos datos.`;
+      const mensaje = `¡Hola! Bienvenido a Rindefy. Aquí tienes tus credenciales de acceso:\n\n👤 Correo: ${credencialesGeneradas.correo}\n🔑 Contraseña: ${credencialesGeneradas.pass}\n\nPor favor, ingresa a la app con estos datos.`;
 
       await Share.share({
         message: mensaje,
@@ -194,7 +194,7 @@ export default function EmpresaColaboradoresScreen() {
         queryParams: { empresaId: auth.currentUser.uid, empresaNombre: nombreEmpresa }
       });
 
-      const mensaje = `¡Hola! Te invito a unirte como colaborador a ${nombreEmpresa} en ContaLink.\n\nInstala la aplicación y luego haz clic en este enlace para crear tu cuenta:\n${redirectUrl}`;
+      const mensaje = `¡Hola! Te invito a unirte como colaborador a ${nombreEmpresa} en Rindefy.\n\nInstala la aplicación y luego haz clic en este enlace para crear tu cuenta:\n${redirectUrl}`;
 
       await Share.share({ message: mensaje });
     } catch (error) {
@@ -362,7 +362,7 @@ export default function EmpresaColaboradoresScreen() {
               <View style={styles.successContainer}>
                 <Ionicons name="checkmark-circle" size={80} color="#34C759" />
                 <Text style={styles.successTitle}>¡Colaborador Creado!</Text>
-                <Text style={styles.successSubtitle}>Entrega estos datos a tu trabajador para que inicie sesión en Contalink:</Text>
+                <Text style={styles.successSubtitle}>Entrega estos datos a tu trabajador para que inicie sesión en Rindefy:</Text>
 
                 <View style={styles.credentialsBox}>
                   <Text style={styles.credLabel}>Correo Electrónico:</Text>

@@ -7,15 +7,11 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Ionicons } from '@expo/vector-icons';
-import * as XLSX from 'xlsx';
-
-// @ts-ignore
-import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
-
-import { auth, db, storage } from '../../utils/firebaseconfig';
 // Importamos los estilos globales con un alias para no confundirlos
 import { styles as globalStyles } from '../../styles/Styles';
+import { generarReporteExcel } from '../../utils/procesamiento_excel';
+
+import { auth, db, storage } from '../../utils/firebaseconfig';
 
 LocaleConfig.locales['es'] = {
   monthNames: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'],
@@ -126,81 +122,14 @@ export default function CalendarioScreen() {
 
   // --- REPORTE EXCEL REAL (.XLSX) ---
   const generarReporte = async () => {
-    if (rawGastos.length === 0) return Alert.alert("Vacío", "No hay gastos para exportar.");
-
-    try {
-      const datosExcel = [
-        ["Fecha Subida", "Comercio", "RUT", "Giro/Rubro", "Fecha Boleta", "Glosa", "Monto", "Estado"]
-      ];
-
-      rawGastos.forEach(item => {
-        let fechaSub = "Sin fecha";
-        if (item.fechaSubida) {
-          try { fechaSub = format(item.fechaSubida.toDate(), 'dd/MM/yyyy HH:mm'); } catch { }
-        }
-
-        datosExcel.push([
-          fechaSub,
-          item.comercio || "Sin nombre",
-          item.rut || "S/R",
-          item.giro || "S/G",
-          item.fechaDetectada || "S/F",
-          item.glosa || "",
-          Number(item.monto) || 0,
-          item.estado || "Procesado"
-        ]);
-      });
-
-      const hoja = XLSX.utils.aoa_to_sheet(datosExcel);
-
-      hoja['!cols'] = [
-        { wch: 18 }, { wch: 35 }, { wch: 15 }, { wch: 80 },
-        { wch: 15 }, { wch: 40 }, { wch: 12 }, { wch: 15 }
-      ];
-
-      // Formato contable para los montos (Columna G, índice 6)
-      for (let i = 1; i < datosExcel.length; i++) {
-        const celdaMonto = XLSX.utils.encode_cell({ c: 6, r: i });
-        if (hoja[celdaMonto]) {
-          hoja[celdaMonto].z = '"$"#,##0';
-        }
-      }
-
-      const libro = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(libro, hoja, "Gastos ContaLink");
-      const excelBase64 = XLSX.write(libro, { type: 'base64', bookType: 'xlsx' });
-
-      const mesActual = format(new Date(), 'MMMM', { locale: es });
-
-      let nombreUsuario = "Usuario";
-      if (user?.displayName) {
-        nombreUsuario = user.displayName;
-      } else if (user?.email) {
-        nombreUsuario = user.email.split('@')[0];
-      }
-
-      const nombreLimpio = nombreUsuario.replace(/[^a-zA-Z0-9 áéíóúÁÉÍÓÚñÑàèìòùÀÈÌÒÙ]/g, "").trim();
-      const nombreArchivo = `Reporte ${mesActual} ${nombreLimpio}.xlsx`;
-
-      // @ts-ignore
-      const fileUri = FileSystem.documentDirectory + nombreArchivo;
-
-      await FileSystem.writeAsStringAsync(fileUri, excelBase64, {
-        encoding: FileSystem.EncodingType.Base64
-      });
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          dialogTitle: 'Exportar Reporte de Gastos'
-        });
-      } else {
-        Alert.alert("Error", "Compartir no está disponible en este dispositivo.");
-      }
-
-    } catch (error: any) {
-      Alert.alert("Error", "Fallo al exportar Excel: " + error.message);
+    let nombreUsuario = "Usuario";
+    if (user?.displayName) {
+      nombreUsuario = user.displayName;
+    } else if (user?.email) {
+      nombreUsuario = user.email.split('@')[0];
     }
+
+    await generarReporteExcel(rawGastos, nombreUsuario);
   };
 
   if (loading) return <View style={globalStyles.container}><ActivityIndicator size="large" color="#007AFF" /></View>;

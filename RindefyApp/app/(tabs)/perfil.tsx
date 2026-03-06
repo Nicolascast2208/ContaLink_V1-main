@@ -116,7 +116,7 @@ export default function PerfilScreen() {
     if (!codigoGenerado) return;
     try {
       await Share.share({
-        message: `¡Hola! Mi código de acceso para la app ContaLink es: ${codigoGenerado} `,
+        message: `¡Hola! Mi código de acceso para la app Rindefy es: ${codigoGenerado} `,
       });
     } catch (error: any) {
       Alert.alert("Error", "No se pudo compartir el código.");
