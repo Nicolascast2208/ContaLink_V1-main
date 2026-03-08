@@ -31,7 +31,11 @@ const formatPesos = (valor: string | number) => {
 
 export default function EmpresaGastosScreen() {
   const [gastos, setGastos] = useState<any[]>([]);
+  const [informes, setInformes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Navigation State
+  const [tipoVista, setTipoVista] = useState<'Sueltos' | 'Informes'>('Sueltos');
   const [filtro, setFiltro] = useState<'Pendiente' | 'Aprobado'>('Pendiente');
 
   // Estados para el visor de detalles y documentos
@@ -79,19 +83,37 @@ export default function EmpresaGastosScreen() {
   useEffect(() => {
     if (!auth.currentUser) return;
 
-    const q = query(
+    // Fetch Gastos (Solo los que no tienen informe asigando o están como pendientes sueltos)
+    // En el futuro podríamos filtrar informId == null, pero por ahora traemos todos para la demo
+    const qGastos = query(
       collection(db, 'gastos'),
       where('empresaId', '==', auth.currentUser.uid)
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribeGastos = onSnapshot(qGastos, (snapshot) => {
       const lista = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       lista.sort((a: any, b: any) => (b.fechaSubida?.toMillis() || 0) - (a.fechaSubida?.toMillis() || 0));
       setGastos(lista);
+    });
+
+    // Fetch Informes enviados a esta empresa
+    const qInformes = query(
+      collection(db, 'informes'),
+      where('empresaId', '==', auth.currentUser.uid)
+    );
+
+    const unsubscribeInformes = onSnapshot(qInformes, (snapshot) => {
+      const lista = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Ordenar por fecha creación
+      lista.sort((a: any, b: any) => (b.fechaCreacion?.toMillis() || 0) - (a.fechaCreacion?.toMillis() || 0));
+      setInformes(lista);
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeGastos();
+      unsubscribeInformes();
+    }
   }, []);
 
   const fetchDocumentUrl = () => {
@@ -276,8 +298,17 @@ export default function EmpresaGastosScreen() {
     setShowMenu(true);
   };
 
-  const gastosFiltrados = gastos.filter(g => g.estadoAprobacion === filtro || (filtro === 'Aprobado' && g.estadoAprobacion === 'Rechazado'));
+  // FITROS
+  // Los gastos "Sueltos" pendientes de revisión deberían idealmente ser los que no pertenecen a un informe (informeId == null)
+  // Pero para no romper la demo si hay legacy, los mostraremos todos por ahora o los filtraremos visualmente.
+  const gastosFiltrados = gastos.filter(g =>
+    (g.estadoAprobacion === filtro || (filtro === 'Aprobado' && g.estadoAprobacion === 'Rechazado')) &&
+    !g.informeId // CRÍTICO: No mostrar boletas sueltas que ya están encapsuladas en un informe
+  );
 
+  const informesFiltrados = informes.filter(inf =>
+    filtro === 'Pendiente' ? inf.estado === 'Enviado' : (inf.estado === 'Aprobado' || inf.estado === 'Rechazado')
+  );
   const renderItem = ({ item }: { item: any }) => {
     if (viewMode === 'mosaico') {
       return (
@@ -375,6 +406,22 @@ export default function EmpresaGastosScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* SUB TABS (Sueltos vs Informes) */}
+      <View style={{ flexDirection: 'row', backgroundColor: '#e9ecef', marginHorizontal: 20, marginBottom: 15, borderRadius: 10, padding: 4 }}>
+        <TouchableOpacity
+          style={{ flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: tipoVista === 'Sueltos' ? 'white' : 'transparent', borderRadius: 8 }}
+          onPress={() => setTipoVista('Sueltos')}
+        >
+          <Text style={{ fontWeight: tipoVista === 'Sueltos' ? 'bold' : '500', color: tipoVista === 'Sueltos' ? '#333' : '#666' }}>Gastos Sueltos</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: tipoVista === 'Informes' ? 'white' : 'transparent', borderRadius: 8 }}
+          onPress={() => setTipoVista('Informes')}
+        >
+          <Text style={{ fontWeight: tipoVista === 'Informes' ? 'bold' : '500', color: tipoVista === 'Informes' ? '#333' : '#666' }}>Informes</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 5 }}>
         <TouchableOpacity
           style={styles.btnViewMode}
@@ -394,23 +441,57 @@ export default function EmpresaGastosScreen() {
 
       {loading ? (
         <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 50 }} />
-      ) : (
+      ) : tipoVista === 'Sueltos' ? (
         <FlatList
-          key={viewMode}
+          key={`gastos-${viewMode}`}
           numColumns={viewMode === 'mosaico' ? 2 : 1}
           style={{ flex: 1 }}
           data={aplicarFiltrosYOrden(gastosFiltrados, filtros)}
           keyExtractor={item => item.id}
-          contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: viewMode === 'mosaico' ? 15 : 0 }}
+          contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: viewMode === 'mosaico' ? 15 : 0 }}
           columnWrapperStyle={viewMode === 'mosaico' ? { justifyContent: 'space-between' } : undefined}
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Ionicons name="checkmark-done-circle-outline" size={60} color="#ccc" />
               <Text style={styles.emptyText}>Todo al día</Text>
-              <Text style={styles.emptySubText}>No hay gastos pendientes de revisión.</Text>
+              <Text style={styles.emptySubText}>No hay gastos sueltos pendientes de revisión.</Text>
             </View>
           }
           renderItem={renderItem}
+        />
+      ) : (
+        <FlatList
+          key={`informes-lista`}
+          style={{ flex: 1 }}
+          data={informesFiltrados}
+          keyExtractor={item => item.id}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Ionicons name="folder-open-outline" size={60} color="#ccc" />
+              <Text style={styles.emptyText}>Bandeja Limpia</Text>
+              <Text style={styles.emptySubText}>No hay informes pendientes de revisión.</Text>
+            </View>
+          }
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[styles.card, { paddingVertical: 20 }]}
+              onPress={() => Alert.alert("Abriendo Informe", "Esta vista se rediccionará al lector de informes corporativo.")}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={[styles.itemIcon, { width: 50, height: 50, borderRadius: 12, backgroundColor: '#E8F1FF', marginRight: 15 }]}>
+                  <Ionicons name="folder" size={26} color="#007AFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#333' }}>{item.nombre}</Text>
+                  <Text style={{ fontSize: 13, color: '#666', marginTop: 4 }}>
+                    {item.estado} • ${(item.totalMonto || 0).toLocaleString('es-CL')}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#ccc" />
+              </View>
+            </TouchableOpacity>
+          )}
         />
       )}
 

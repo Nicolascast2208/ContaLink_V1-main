@@ -30,7 +30,7 @@ export default function ResponsiveSidebar({ rol }: SidebarProps) {
     // Define structure
     const rendidorItems = [
         { name: 'Gastos', icon: 'receipt-outline', path: '/', roles: ['persona_natural', 'trabajador', 'usuario', 'contador', 'admin_empresa'] },
-        { name: 'Informes', icon: 'document-text-outline', path: '/informes_dummy', roles: ['persona_natural', 'trabajador', 'usuario', 'contador', 'admin_empresa'], disabled: true },
+        { name: 'Informes', icon: 'document-text-outline', path: '/informes', roles: ['persona_natural', 'trabajador', 'usuario', 'contador', 'admin_empresa'] },
         { name: 'Fondos', icon: 'cash-outline', path: '/fondos_dummy', roles: ['persona_natural', 'trabajador', 'usuario', 'contador', 'admin_empresa'], disabled: true },
         { name: 'Perfil', icon: 'person-outline', path: '/perfil', roles: ['persona_natural', 'trabajador', 'usuario', 'contador', 'admin_empresa'] },
     ];
