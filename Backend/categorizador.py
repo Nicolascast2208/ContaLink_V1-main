@@ -59,3 +59,50 @@ def clasificar_gasto(comercio, texto_boleta):
     except Exception as e:
         print(f"⚠️ Error al clasificar con Gemini: {e}")
         return "Otro"
+
+def extraer_datos_con_ia(texto_ocr):
+    """
+    Utiliza Gemini 1.5 Flash para analizar el texto raw del OCR y extraer todos
+    los campos contables relevantes de manera estructurada (JSON).
+    """
+    prompt = f"""
+    Eres un auditor contable súper inteligente. Tu tarea es extraer de forma
+    extremadamente precisa los siguientes datos del texto raw de esta boleta o factura.
+
+    Debes devolver EXCLUSIVAMENTE un objeto JSON válido (sin marcas de markdown), con estas claves exactas:
+    - "total": (entero numérico, el valor total final pagado, sin puntos ni signos. Si no hay, 0)
+    - "iva": (entero numérico, el valor del IVA o impuesto. Si no dice o es exento, 0)
+    - "fecha": (cadena, la fecha de la compra en formato DD/MM/YYYY. Si no existe, pon "S/F")
+    - "rut": (cadena, RUT del local EMISOR de la boleta, no del cliente. Formato XX.XXX.XXX-X o XXXXXXXX-X. Si no existe, pon "S/R")
+    - "comercio": (cadena, el nombre real de la tienda o local. NO pongas la dirección ni el giro. Si es irreconocible, pon "Comercio Desconocido")
+    - "giro": (cadena, a qué se dedica la empresa, ej: Venta de abarrotes. Si no sale, pon "S/G")
+    - "tipo_documento": (cadena, debe ser exactamente "Boleta" o "Factura" dependiendo de qué estemos leyendo)
+    - "numero_documento": (cadena, el número de folio de la boleta o factura. Ej: 5412. Si no tiene folio claro, pon "")
+
+    Texto extraído por OCR:
+    ---
+    {texto_ocr[:1500]}
+    ---
+    """
+
+    try:
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                response_mime_type="application/json"
+            )
+        )
+        
+        # El response_mime_type fuerza a Gemini a dar JSON válido, pero por si acaso limpiamos los backticks.
+        texto_res = response.text.strip()
+        if texto_res.startswith('```json'):
+            texto_res = texto_res.replace('```json', '', 1)
+        if texto_res.endswith('```'):
+            texto_res = texto_res[:-3]
+            
+        return json.loads(texto_res.strip())
+
+    except Exception as e:
+        print(f"⚠️ Error fatal en extracción estructurada Gemini: {e}")
+        return None # Señal explícita para que cerebro.py use las Regex clásicas
+

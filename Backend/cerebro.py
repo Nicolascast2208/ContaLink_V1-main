@@ -16,7 +16,7 @@ from google.oauth2 import service_account
 
 from sii_helper import consultar_rut_sii 
 from PIL import Image 
-from categorizador import clasificar_gasto
+from categorizador import clasificar_gasto, extraer_datos_con_ia
 
 # --- INICIALIZACIÓN DE FLASK ---
 app = Flask(__name__)
@@ -279,7 +279,29 @@ def procesar_boleta_endpoint():
         
         miniatura_base64 = generar_miniatura_base64(imagen_bytes, es_pdf)
         texto = detectar_texto_vision(imagen_bytes, mime_type)
-        datos = extraer_datos(texto)
+        
+        # --- 1. INTENTO DE EXTRACCIÓN CON IA (GEMINI 1.5 FLASH) ---
+        datos = extraer_datos_con_ia(texto)
+        
+        # --- 2. FALLBACK A REGEX SI LA IA FALLA ---
+        if not datos:
+            print("⚠️ IA no pudo generar un JSON válido. Cayendo a extracción por Regex de respaldo.")
+            datos = extraer_datos(texto)
+            datos['categoriaComercio'] = clasificar_gasto(datos['comercio'], texto)
+        else:
+            print("✨ IA Google extrajo datos exitosamente.")
+            # Asegurar que todas las claves requeridas existan en el diccionario devuelto por Gemini
+            datos.setdefault("total", 0)
+            datos.setdefault("iva", 0)
+            datos.setdefault("fecha", "S/F")
+            datos.setdefault("rut", "S/R")
+            datos.setdefault("comercio", "Comercio Desconocido")
+            datos.setdefault("giro", "S/G")
+            datos.setdefault("tipo_documento", "Boleta")
+            datos.setdefault("numero_documento", "")
+            
+            # Clasificamos la categoría con el nombre limpio detectado
+            datos['categoriaComercio'] = clasificar_gasto(datos['comercio'], texto)
 
         if datos['rut'] != "S/R":
             info_sii = consultar_rut_sii(datos['rut'])

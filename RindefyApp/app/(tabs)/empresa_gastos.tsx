@@ -441,6 +441,12 @@ export default function EmpresaGastosScreen() {
               <Ionicons name="document-text-outline" size={26} color="#fff" style={styles.menuIcon} />
               <Text style={styles.menuText}>Documento PDF</Text>
             </TouchableOpacity>
+
+            <View style={{ marginTop: 10, alignItems: 'center', paddingTop: 10, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.05)' }}>
+              <Text style={{ fontSize: 9, color: '#aaa', fontWeight: 'bold', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                Rindefy AI ✨ Powered by Google
+              </Text>
+            </View>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -473,6 +479,11 @@ export default function EmpresaGastosScreen() {
 
           {/* Footer Buttons */}
           <View style={{ padding: 20, backgroundColor: 'white', borderTopWidth: 1, borderColor: '#eee' }}>
+            {uploading && (
+              <Text style={{ textAlign: 'center', color: '#666', marginBottom: 15, fontSize: 13, fontWeight: '500' }}>
+                Rindefy AI está analizando el documento... 🧠
+              </Text>
+            )}
             <TouchableOpacity
               disabled={uploading}
               style={{ backgroundColor: '#007AFF', paddingVertical: 18, borderRadius: 14, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', shadowColor: '#007AFF', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 }}
@@ -481,7 +492,7 @@ export default function EmpresaGastosScreen() {
               {uploading ? <ActivityIndicator color="white" /> : (
                 <>
                   <Ionicons name="cloud-upload-outline" size={24} color="white" style={{ marginRight: 8 }} />
-                  <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>Subir Documento</Text>
+                  <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>Extraer Datos e Ingresar</Text>
                 </>
               )}
             </TouchableOpacity>
