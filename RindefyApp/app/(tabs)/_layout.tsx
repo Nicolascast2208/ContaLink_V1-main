@@ -204,6 +204,20 @@ export default function TabLayout() {
           />
 
           {/* ==========================================
+            VISTAS DE INFORMES
+            ========================================== */}
+          <Tabs.Screen
+            name="informes"
+            options={{
+              title: 'Informes',
+              href: rol === 'contador' ? null : '/informes', // Oculto solo para contador
+              tabBarIcon: ({ color, focused }) => (
+                <Ionicons name={focused ? "folder-open" : "folder-open-outline"} size={24} color={color} />
+              ),
+            }}
+          />
+
+          {/* ==========================================
             VISTA COMPARTIDA POR TODOS
             ========================================== */}
           <Tabs.Screen
