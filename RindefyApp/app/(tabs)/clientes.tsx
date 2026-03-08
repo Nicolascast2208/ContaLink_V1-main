@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, where, getDocs, doc, updateDoc, arrayUnion, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, arrayUnion, onSnapshot, deleteField } from 'firebase/firestore';
 import { useRouter } from 'expo-router'; // <-- 1. IMPORTAMOS EL ROUTER
 
 import { auth, db } from '../../utils/firebaseconfig';
@@ -86,19 +86,35 @@ export default function ClientesScreen() {
         return Alert.alert("Aviso", "Este cliente ya está en tu cartera.");
       }
 
-      // 3. Guardamos el cliente en el perfil del contador
-      const contadorRef = doc(db, "usuarios", auth.currentUser!.uid);
-      await updateDoc(contadorRef, {
-        clientesVinculados: arrayUnion({
-          uid: clienteDoc.id,
-          nombre: clienteData.nombre || 'Sin nombre',
-          apellido: clienteData.apellido || '',
-          rut: clienteData.rut || 'S/R',
-          email: clienteData.email || ''
-        })
+      // Evitar sobreescribir si ya hay una solicitud o ya tiene contador
+      if (clienteData.contadorVinculado) {
+        setBuscando(false);
+        return Alert.alert("Aviso", "Este cliente ya está vinculado a otro contador.");
+      }
+
+      // 3. Enviamos la "solicitud" al perfil del cliente en lugar de vincular automáticamente
+      const clienteRef = doc(db, "usuarios", clienteDoc.id);
+
+      // Obtenemos los datos del contador (el usuario actual) para enviarlos en la solicitud
+      const authUser = auth.currentUser;
+      const contadorDocRef = doc(db, "usuarios", authUser.uid);
+      const contadorDocSnap = await getDocs(query(collection(db, "usuarios"), where("uid", "==", authUser.uid)));
+      let contadorNombre = authUser.displayName || 'Un Contador';
+
+      if (!contadorDocSnap.empty) {
+        const cData = contadorDocSnap.docs[0].data();
+        contadorNombre = `${cData.nombre || ''} ${cData.apellido || ''}`.trim() || contadorNombre;
+      }
+
+      await updateDoc(clienteRef, {
+        solicitudContador: {
+          uid: authUser.uid,
+          nombre: contadorNombre,
+          estado: 'pendiente'
+        }
       });
 
-      Alert.alert("¡Éxito!", `Has vinculado a ${clienteData.nombre} a tu cartera de clientes.`);
+      Alert.alert("Solicitud Enviada", `Se ha enviado una solicitud de vinculación a ${clienteData.nombre}. El cliente debe aprobarla en su perfil para que aparezca en tu cartera.`);
       setModalVisible(false);
       setCodigoInput('');
 
@@ -107,6 +123,39 @@ export default function ClientesScreen() {
     } finally {
       setBuscando(false);
     }
+  };
+
+  const handleEliminarCliente = (cliente: any) => {
+    Alert.alert(
+      "Eliminar Cliente",
+      `¿Estás seguro de que quieres eliminar a ${cliente.nombre} de tu cartera? Perderás el acceso a sus facturas y documentos.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Sí, Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            if (!auth.currentUser) return;
+            try {
+              const contadorRef = doc(db, 'usuarios', auth.currentUser.uid);
+              const clienteRef = doc(db, 'usuarios', cliente.uid);
+
+              // 1. Quitar al cliente de la lista del contador
+              const nuevosClientes = misClientes.filter((c: any) => c.uid !== cliente.uid);
+              await updateDoc(contadorRef, { clientesVinculados: nuevosClientes });
+
+              // 2. Limpiar el contadorVinculado del documento del cliente
+              await updateDoc(clienteRef, { contadorVinculado: deleteField() });
+
+              // Alert.alert no es estrictamente necesario si ya reacciona onSnapshot, pero da aviso local
+            } catch (error) {
+              console.error("Error al eliminar cliente:", error);
+              Alert.alert("Error", "Hubo un problema al intentar eliminar al cliente.");
+            }
+          }
+        }
+      ]
+    );
   };
 
   if (loading) {
@@ -140,16 +189,43 @@ export default function ClientesScreen() {
             // <-- 3. NAVEGAMOS A LA PANTALLA DINÁMICA AL HACER CLIC
             onPress={() => router.push({
               pathname: `/cliente/[id]` as any,
-              params: { id: item.uid, nombre: item.nombre, apellido: item.apellido, rut: item.rut }
+              params: {
+                id: item.uid,
+                nombre: item.nombre,
+                apellido: item.apellido,
+                rut: item.rut,
+                razonSocial: item.razonSocial || ''
+              }
             })}
           >
             <View style={styles.clientAvatar}>
-              <Text style={styles.avatarText}>{item.nombre.charAt(0)}{item.apellido ? item.apellido.charAt(0) : ''}</Text>
+              {/* Si tiene razonSocial cogemos sus iniciales, si no, las del nombre personal */}
+              <Text style={styles.avatarText}>
+                {item.razonSocial
+                  ? item.razonSocial.substring(0, 2).toUpperCase()
+                  : `${item.nombre.charAt(0)}${item.apellido ? item.apellido.charAt(0) : ''}`.toUpperCase()}
+              </Text>
             </View>
             <View style={styles.clientInfo}>
-              <Text style={styles.clientName}>{item.nombre} {item.apellido}</Text>
+              <Text style={styles.clientName}>
+                {item.razonSocial ? item.razonSocial : `${item.nombre} ${item.apellido}`}
+              </Text>
+
+              {/* Si es una empresa, mostramos el nombre del Admin abajo */}
+              {item.razonSocial && (
+                <Text style={[styles.clientRut, { marginBottom: 2 }]}>Admin: {item.nombre} {item.apellido}</Text>
+              )}
+
               <Text style={styles.clientRut}>RUT: {item.rut}</Text>
             </View>
+
+            <TouchableOpacity
+              onPress={() => handleEliminarCliente(item)}
+              style={{ paddingHorizontal: 10, paddingVertical: 5, marginRight: 5 }}
+            >
+              <Ionicons name="trash-outline" size={24} color="#ff4444" />
+            </TouchableOpacity>
+
             <Ionicons name="chevron-forward" size={24} color="#CCC" />
           </TouchableOpacity>
         )}

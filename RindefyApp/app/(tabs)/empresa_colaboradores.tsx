@@ -56,6 +56,9 @@ export default function EmpresaColaboradoresScreen() {
   const [correoContacto, setCorreoContacto] = useState('');
   const [telefonoContacto, setTelefonoContacto] = useState('');
 
+  // NUEVO ESTADO PARA EL MENÚ FLOTANTE
+  const [showMenu, setShowMenu] = useState(false);
+
   useEffect(() => {
     if (!auth.currentUser) return;
     const q = query(
@@ -204,15 +207,7 @@ export default function EmpresaColaboradoresScreen() {
   };
 
   const handleMenuAgregar = () => {
-    Alert.alert(
-      "Agregar Colaborador",
-      "¿Cómo deseas agregar a tu nuevo colaborador?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        { text: "Agregar Manualmente", onPress: () => setModalCreateVisible(true) },
-        { text: "Generar Link de Invitación", onPress: handleGenerarLink }
-      ]
-    );
+    setShowMenu(true);
   };
 
   // --- FUNCIÓN: INICIAR EDICIÓN ---
@@ -350,6 +345,25 @@ export default function EmpresaColaboradoresScreen() {
       <TouchableOpacity style={styles.fab} onPress={handleMenuAgregar}>
         <Ionicons name="add" size={35} color="white" />
       </TouchableOpacity>
+
+      {/* --- MENÚ FLOTANTE CUSTOMIZADO --- */}
+      <Modal visible={showMenu} transparent={true} animationType="fade" onRequestClose={() => setShowMenu(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }} activeOpacity={1} onPress={() => setShowMenu(false)}>
+          <View style={styles.floatingMenu}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setShowMenu(false); setTimeout(() => setModalCreateVisible(true), 300); }}>
+              <Ionicons name="person-add-outline" size={26} color="#fff" style={styles.menuIcon} />
+              <Text style={styles.menuText}>Agregar Manualmente</Text>
+            </TouchableOpacity>
+
+            <View style={styles.menuSeparator} />
+
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setShowMenu(false); setTimeout(() => handleGenerarLink(), 300); }}>
+              <Ionicons name="link-outline" size={26} color="#fff" style={styles.menuIcon} />
+              <Text style={styles.menuText}>Link de Invitación</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* ==========================================================
           MODAL 1: CREAR COLABORADOR Y MOSTRAR CREDENCIALES
@@ -519,6 +533,13 @@ const styles = StyleSheet.create({
   actionBtn: { padding: 8, backgroundColor: '#f9f9f9', borderRadius: 8 },
 
   fab: { position: 'absolute', bottom: 20, right: 20, backgroundColor: '#007AFF', width: 65, height: 65, borderRadius: 32.5, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 5 },
+
+  // Estilos del Nuevo Menú Flotante
+  floatingMenu: { position: 'absolute', bottom: 100, right: 20, backgroundColor: 'rgba(35, 35, 40, 0.88)', borderRadius: 20, paddingVertical: 10, paddingHorizontal: 15, width: 260, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 15 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 10 },
+  menuIcon: { marginRight: 15 },
+  menuText: { color: '#fff', fontSize: 16, fontWeight: '500' },
+  menuSeparator: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', width: '100%', marginVertical: 2 },
 
   modalBackground: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
   modalContent: { backgroundColor: '#fff', padding: 25, borderTopLeftRadius: 25, borderTopRightRadius: 25, shadowColor: '#000', shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.2, shadowRadius: 5, elevation: 10 },

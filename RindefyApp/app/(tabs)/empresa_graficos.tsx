@@ -1,141 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Dimensions, TouchableOpacity } from 'react-native';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
 import { PieChart } from 'react-native-gifted-charts';
 import { Ionicons } from '@expo/vector-icons';
 
-import { auth, db } from '../../utils/firebaseconfig';
 import { generarReporteExcel } from '../../utils/procesamiento_excel';
+import { useEmpresaMetrics } from '../../hooks/useEmpresaMetrics';
 
 const { width } = Dimensions.get('window');
 
-interface Gasto {
-    id: string;
-    monto: number;
-    estadoAprobacion: string; // 'Aprobado', 'Rechazado', 'Pendiente'
-    empresaId: string;
-    nombreTrabajador?: string;
-    categoriaComercio?: string;
-}
-
 export default function EmpresaGraficosScreen() {
-    const [user, setUser] = useState<any>(null);
-    const [empresaId, setEmpresaId] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
-
-    // Array maestro de gastos aprobados para el Excel
-    const [rawGastosAprobados, setRawGastosAprobados] = useState<any[]>([]);
-
-    // Stats
-    const [totalBoletas, setTotalBoletas] = useState(0);
-    const [montoAprobado, setMontoAprobado] = useState(0);
-
-    // Stats Desglosados
-    const [countAprobado, setCountAprobado] = useState(0);
-    const [countPendiente, setCountPendiente] = useState(0);
-    const [countRechazado, setCountRechazado] = useState(0);
-
-    // Colaboradores Data
-    const [colaboradorStats, setColaboradorStats] = useState<any[]>([]);
-
-    // Categorias Data
-    const [categoriasStats, setCategoriasStats] = useState<[string, { cantidad: number, monto: number }][]>([]);
-
-    useEffect(() => {
-        let unsubscribeGastos: () => void;
-
-        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-            if (currentUser) {
-                setUser(currentUser);
-                setEmpresaId(currentUser.uid);
-
-                // Configurar listener en tiempo real
-                const q = query(collection(db, "gastos"), where("empresaId", "==", currentUser.uid));
-
-                unsubscribeGastos = onSnapshot(q, (snapshot) => {
-                    let total = 0;
-                    let sumAprobado = 0;
-                    let cAprobado = 0;
-                    let cRechazado = 0;
-                    let cPendiente = 0;
-                    const colabsResumen: Record<string, { cantidad: number; monto: number }> = {};
-                    const categoriasResumen: Record<string, { cantidad: number, monto: number }> = {};
-                    const listaAprobados: any[] = [];
-
-                    snapshot.forEach(doc => {
-                        const data = doc.data() as Gasto;
-                        // Ignore strictly those marked as deleted. 
-                        // Documents marked as 'Duplicado' by AI are still visible to the Admin until they delete it.
-                        if (data.estadoAprobacion === 'Eliminado') return;
-
-                        total++;
-                        const monto = Number(data.monto) || 0;
-                        const nombreColab = data.nombreTrabajador || 'Desconocido';
-                        const estado = data.estadoAprobacion || 'Pendiente';
-
-                        if (estado === 'Aprobado') {
-                            cAprobado++;
-                            sumAprobado += monto;
-                            listaAprobados.push(data);
-                        } else if (estado === 'Rechazado') {
-                            cRechazado++;
-                        } else {
-                            cPendiente++;
-                        }
-
-                        // Mapeo para colaboradores
-                        if (!colabsResumen[nombreColab]) {
-                            colabsResumen[nombreColab] = { cantidad: 0, monto: 0 };
-                        }
-                        colabsResumen[nombreColab].cantidad += 1;
-                        if (estado === 'Aprobado') {
-                            colabsResumen[nombreColab].monto += monto;
-
-                            // Mapeo de Categorias (Solo dinero aprobado)
-                            const categoria = data.categoriaComercio || 'Otro';
-                            if (!categoriasResumen[categoria]) categoriasResumen[categoria] = { cantidad: 0, monto: 0 };
-                            categoriasResumen[categoria].monto += monto;
-                            categoriasResumen[categoria].cantidad += 1;
-                        }
-                    });
-
-                    setTotalBoletas(total);
-                    setMontoAprobado(sumAprobado);
-                    setCountAprobado(cAprobado);
-                    setCountPendiente(cPendiente);
-                    setCountRechazado(cRechazado);
-
-                    // Format data for BarChart (Top 5)
-                    const sortedColabs = Object.entries(colabsResumen)
-                        .sort((a, b) => b[1].cantidad - a[1].cantidad)
-                        .slice(0, 5);
-
-                    const sortedCategorias = Object.entries(categoriasResumen)
-                        .sort((a, b) => b[1].monto - a[1].monto);
-
-                    setColaboradorStats(sortedColabs);
-                    setCategoriasStats(sortedCategorias);
-                    setRawGastosAprobados(listaAprobados);
-                    setLoading(false);
-                }, (error) => {
-                    console.error("Error cargando estadísticas: ", error);
-                    setLoading(false);
-                });
-
-            } else {
-                setLoading(false);
-            }
-        });
-
-        return () => {
-            unsubscribeAuth();
-            if (unsubscribeGastos) {
-                unsubscribeGastos();
-            }
-        };
-    }, []);
-
+    const {
+        user,
+        loading,
+        rawGastosAprobados,
+        totalBoletas,
+        montoAprobado,
+        countAprobado,
+        countPendiente,
+        countRechazado,
+        colaboradorStats,
+        categoriasStats
+    } = useEmpresaMetrics();
 
     const formatCLP = (valor: number) => {
         return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(valor);

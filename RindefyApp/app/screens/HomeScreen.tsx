@@ -8,10 +8,12 @@ import { getDownloadURL, ref } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import Pdf from 'react-native-pdf';
+import PdfViewer from '../../components/PdfViewer';
 
 import { auth, storage } from '../../utils/firebaseconfig';
 import { useGastos } from '../../hooks/useGastos';
+import FilterSortModal from '../../components/FilterSortModal';
+import { FiltrosGlobales, filtrosIniciales, aplicarFiltrosYOrden } from '../../utils/filterSortGastos';
 
 const { width, height } = Dimensions.get('window');
 
@@ -44,6 +46,7 @@ export default function HomeScreen({ user }: { user: any }) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [selectedFile, setSelectedFile] = useState<{ uri: string, isPdf: boolean } | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [isLoadingPdf, setIsLoadingPdf] = useState(false);
 
   const [loadingImage, setLoadingImage] = useState(false);
 
@@ -65,6 +68,16 @@ export default function HomeScreen({ user }: { user: any }) {
 
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // NUEVO ESTADO PARA EL MENÚ FLOTANTE
+  const [showMenu, setShowMenu] = useState(false);
+
+  // --- FILTROS Y ORDEN ---
+  const [filtros, setFiltros] = useState<FiltrosGlobales>(filtrosIniciales);
+  const [showFiltros, setShowFiltros] = useState(false);
+
+  // --- VISTA LISTA / MOSAICO ---
+  const [viewMode, setViewMode] = useState<'lista' | 'mosaico'>('lista');
 
   useEffect(() => {
     const now = new Date();
@@ -192,10 +205,7 @@ export default function HomeScreen({ user }: { user: any }) {
   };
 
   const mostrarOpciones = () => {
-    Alert.alert("Agregar Documento", "Selecciona una opción", [
-      { text: "Cancelar", style: "cancel" }, { text: "Cámara", onPress: () => handleSelectImage(true) },
-      { text: "Galería", onPress: () => handleSelectImage(false) }, { text: "Archivo PDF", onPress: handleSelectDocument }
-    ]);
+    setShowMenu(true);
   };
 
   const renderEstadoBadge = (item: Boleta) => {
@@ -219,6 +229,9 @@ export default function HomeScreen({ user }: { user: any }) {
   const isApproved = editingBoleta?.estadoAprobacion === 'Aprobado';
   const isReadOnly = isApproved || !isEditingMode;
 
+  // --- APLICAR FILTROS ---
+  const gastosFiltrados = aplicarFiltrosYOrden(boletas, filtros);
+
   return (
     <View style={styles.container}>
       {/* ESPACIO SUPERIOR CORREGIDO */}
@@ -235,15 +248,37 @@ export default function HomeScreen({ user }: { user: any }) {
         </View>
       </View>
 
-      <View style={styles.summaryContainer}>
-        <Text style={styles.summaryLabel}>Gastos de {nombreMesCap}</Text>
-        <Text style={styles.summaryTotal}>${totalMes.toLocaleString('es-CL')}</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: 20, marginBottom: 15 }}>
+        <View style={styles.summaryContainer}>
+          <Text style={styles.summaryLabel}>Gastos de {nombreMesCap}</Text>
+          <Text style={styles.summaryTotal}>${totalMes.toLocaleString('es-CL')}</Text>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TouchableOpacity
+            style={styles.btnViewMode}
+            onPress={() => setViewMode(prev => prev === 'lista' ? 'mosaico' : 'lista')}
+          >
+            <Ionicons name={viewMode === 'lista' ? 'grid-outline' : 'list-outline'} size={20} color="#007AFF" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.btnFilter}
+            onPress={() => setShowFiltros(true)}
+          >
+            <Ionicons name="funnel-outline" size={20} color="#007AFF" />
+            <Text style={styles.btnFilterText}>Filtros</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
-        data={boletas}
+        key={viewMode}
+        numColumns={viewMode === 'mosaico' ? 2 : 1}
+        data={gastosFiltrados}
         keyExtractor={item => item.id}
-        contentContainerStyle={{ paddingBottom: 110 }} // Margen inferior para no chocar con el botón flotante
+        contentContainerStyle={{ paddingBottom: 110, paddingHorizontal: viewMode === 'mosaico' ? 20 : 0 }} // Margen inferior para no chocar con el botón flotante
+        columnWrapperStyle={viewMode === 'mosaico' ? { justifyContent: 'space-between' } : undefined}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#007AFF" />}
         ListEmptyComponent={
           <View style={styles.emptyState}>
@@ -252,48 +287,106 @@ export default function HomeScreen({ user }: { user: any }) {
             )}
           </View>
         }
-        renderItem={({ item }) => (
-          <TouchableOpacity style={styles.itemCard} onPress={() => iniciarEdicion(item)} activeOpacity={0.8}>
-            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-
-              <View style={[
-                styles.itemIcon,
-                { padding: 0, overflow: 'hidden', borderRadius: 12, width: 70, height: 90, backgroundColor: '#f8f9fa', borderWidth: 1, borderColor: '#eee', marginRight: 15 }
-              ]}>
-                {item.miniaturaBase64 ? (
-                  <Image source={{ uri: item.miniaturaBase64 }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                ) : (
-                  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' }}>
-                    <Ionicons name={item.ruta.includes('.pdf') ? "document-text" : "image"} size={35} color="#ddd" />
+        renderItem={({ item }) => {
+          if (viewMode === 'mosaico') {
+            return (
+              <TouchableOpacity style={styles.gridCard} onPress={() => iniciarEdicion(item)} activeOpacity={0.8}>
+                <View style={styles.gridImageContainer}>
+                  {item.miniaturaBase64 ? (
+                    <Image source={{ uri: item.miniaturaBase64 }} style={{ width: '100%', height: '100%', borderRadius: 12 }} resizeMode="cover" />
+                  ) : (
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                      <Ionicons name={item.ruta.includes('.pdf') ? "document-text" : "image"} size={35} color="#ddd" />
+                    </View>
+                  )}
+                </View>
+                <View style={{ padding: 10, flex: 1, justifyContent: 'space-between' }}>
+                  <View>
+                    <Text style={[styles.itemTitle, (item.estado === 'Duplicado' || item.estadoAprobacion === 'Rechazado') && { color: '#ff4444', textDecorationLine: 'line-through' }]} numberOfLines={2}>
+                      {item.comercio}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#666', marginTop: 2 }} numberOfLines={1}>
+                      {item.tipoDocumento || 'Boleta'} {item.fechaDetectada ? `• ${item.fechaDetectada}` : ''}
+                    </Text>
                   </View>
-                )}
-              </View>
+                  <View style={{ marginTop: 5 }}>
+                    {renderEstadoBadge(item)}
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          }
 
-              <View style={{ flex: 1, paddingRight: 5 }}>
-                <Text style={[styles.itemTitle, (item.estado === 'Duplicado' || item.estadoAprobacion === 'Rechazado') && { color: '#ff4444', textDecorationLine: 'line-through' }]} numberOfLines={1}>
-                  {item.comercio}
-                </Text>
-                <Text style={{ fontSize: 12, color: '#444', fontWeight: '500', marginBottom: 2 }}>
-                  {item.tipoDocumento || 'Boleta'} {item.numeroDocumento ? `N° ${item.numeroDocumento}` : ''}
-                </Text>
-                {(item.rut || item.giro) && (
-                  <Text style={{ fontSize: 11, color: '#888', marginBottom: 2 }}>
-                    {item.rut ? `RUT: ${item.rut}` : ''} {item.rut && item.giro ? ' • ' : ''} {item.giro ? `${item.giro.substring(0, 25)}${item.giro.length > 25 ? '...' : ''}` : ''}
+          // Vista de Lista (Clásica)
+          return (
+            <TouchableOpacity style={styles.itemCard} onPress={() => iniciarEdicion(item)} activeOpacity={0.8}>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+
+                <View style={[
+                  styles.itemIcon,
+                  { padding: 0, overflow: 'hidden', borderRadius: 12, width: 70, height: 90, backgroundColor: '#f8f9fa', borderWidth: 1, borderColor: '#eee', marginRight: 15 }
+                ]}>
+                  {item.miniaturaBase64 ? (
+                    <Image source={{ uri: item.miniaturaBase64 }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                  ) : (
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' }}>
+                      <Ionicons name={item.ruta.includes('.pdf') ? "document-text" : "image"} size={35} color="#ddd" />
+                    </View>
+                  )}
+                </View>
+
+                <View style={{ flex: 1, paddingRight: 5 }}>
+                  <Text style={[styles.itemTitle, (item.estado === 'Duplicado' || item.estadoAprobacion === 'Rechazado') && { color: '#ff4444', textDecorationLine: 'line-through' }]} numberOfLines={1}>
+                    {item.comercio}
                   </Text>
-                )}
-                {renderEstadoBadge(item)}
-              </View>
+                  <Text style={{ fontSize: 12, color: '#444', fontWeight: '500', marginBottom: 2 }}>
+                    {item.tipoDocumento || 'Boleta'} {item.numeroDocumento ? `N° ${item.numeroDocumento}` : ''}
+                  </Text>
+                  {(item.rut || item.giro) && (
+                    <Text style={{ fontSize: 11, color: '#888', marginBottom: 2 }}>
+                      {item.rut ? `RUT: ${item.rut}` : ''} {item.rut && item.giro ? ' • ' : ''} {item.giro ? `${item.giro.substring(0, 25)}${item.giro.length > 25 ? '...' : ''}` : ''}
+                    </Text>
+                  )}
+                  {renderEstadoBadge(item)}
+                </View>
 
-              <Ionicons name="chevron-forward" size={20} color="#ccc" />
-            </View>
-          </TouchableOpacity>
-        )}
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#ccc" style={{ marginLeft: 5 }} />
+            </TouchableOpacity>
+          );
+        }}
       />
 
       {/* BOTÓN FLOTANTE CORREGIDO CON SÚPER PRIORIDAD DE TOQUE */}
       <TouchableOpacity style={styles.fab} onPress={mostrarOpciones} activeOpacity={0.7}>
         <Ionicons name="add" size={35} color="white" />
       </TouchableOpacity>
+
+      {/* --- MENÚ FLOTANTE CUSTOMIZADO (NUEVO) --- */}
+      <Modal visible={showMenu} transparent={true} animationType="fade" onRequestClose={() => setShowMenu(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }} activeOpacity={1} onPress={() => setShowMenu(false)}>
+          <View style={styles.floatingMenu}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setShowMenu(false); setTimeout(() => handleSelectImage(true), 300); }}>
+              <Ionicons name="camera-outline" size={26} color="#fff" style={styles.menuIcon} />
+              <Text style={styles.menuText}>Cámara</Text>
+            </TouchableOpacity>
+
+            <View style={styles.menuSeparator} />
+
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setShowMenu(false); setTimeout(() => handleSelectImage(false), 300); }}>
+              <Ionicons name="images-outline" size={26} color="#fff" style={styles.menuIcon} />
+              <Text style={styles.menuText}>Galería</Text>
+            </TouchableOpacity>
+
+            <View style={styles.menuSeparator} />
+
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setShowMenu(false); setTimeout(() => handleSelectDocument(), 300); }}>
+              <Ionicons name="document-text-outline" size={26} color="#fff" style={styles.menuIcon} />
+              <Text style={styles.menuText}>Documento PDF</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* --- MODAL UPLOAD --- */}
       <Modal visible={showConfirm} animationType="slide" transparent={false}>
@@ -367,7 +460,7 @@ export default function HomeScreen({ user }: { user: any }) {
                     <ActivityIndicator size="large" color="#007AFF" />
                   ) : selectedIsPdf ? (
                     <View pointerEvents="none" style={{ flex: 1, width: '100%' }}>
-                      <Pdf source={{ uri: selectedDocumentUrl }} style={{ flex: 1, width: '100%' }} fitPolicy={0} trustAllCerts={false} />
+                      <PdfViewer uri={selectedDocumentUrl} style={{ flex: 1, width: '100%' }} />
                     </View>
                   ) : (
                     <Image source={{ uri: selectedDocumentUrl }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
@@ -491,7 +584,7 @@ export default function HomeScreen({ user }: { user: any }) {
                   </TouchableOpacity>
                   {selectedIsPdf ? (
                     <View style={{ flex: 1, width: width, height: height, marginTop: 100 }}>
-                      <Pdf source={{ uri: selectedDocumentUrl }} style={{ flex: 1, width: width }} fitPolicy={0} trustAllCerts={false} />
+                      <PdfViewer uri={selectedDocumentUrl} style={{ flex: 1, width: width }} />
                     </View>
                   ) : (
                     <Image source={{ uri: selectedDocumentUrl }} style={{ flex: 1, width: '100%', height: '100%' }} resizeMode="stretch" />
@@ -502,7 +595,17 @@ export default function HomeScreen({ user }: { user: any }) {
           </KeyboardAvoidingView>
         )}
       </Modal>
-    </View >
+
+      {/* --- MODAL DE FILTROS --- */}
+      <FilterSortModal
+        visible={showFiltros}
+        onClose={() => setShowFiltros(false)}
+        filtrosActuales={filtros}
+        onApply={(nuevosFiltros) => setFiltros(nuevosFiltros)}
+        estadosDisponibles={['Todos', 'Aprobado', 'Rechazado', 'Pendiente', 'Procesado', 'Revisar Manualmente']}
+      />
+
+    </View>
   );
 }
 
@@ -511,21 +614,76 @@ const styles = StyleSheet.create({
   // Ajuste de margen superior según el dispositivo (iOS vs Android)
   // --- ESPACIO SUPERIOR REDUCIDO ---
   header: { paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 15 : 20, paddingBottom: 10, backgroundColor: '#fff' },
-  headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#333' },
+  headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#101A26' },
 
-  summaryContainer: { backgroundColor: '#007AFF', margin: 20, padding: 25, borderRadius: 15, shadowColor: '#007AFF', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 8 },
-  summaryLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 14, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
-  summaryTotal: { color: 'white', fontSize: 38, fontWeight: 'bold', marginTop: 5 },
+  summaryContainer: {
+    // Se elimina margin horizontal de aquí porque ahora se maneja en el Row padre
+  },
+  summaryLabel: { fontSize: 13, color: '#666', textTransform: 'uppercase', fontWeight: '600', marginBottom: 4 },
+  summaryTotal: { fontSize: 32, fontWeight: 'bold', color: '#007AFF' },
+
+  btnFilter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F1FF',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 6
+  },
+  btnFilterText: {
+    color: '#007AFF',
+    fontWeight: '600',
+    fontSize: 14
+  },
+  btnViewMode: {
+    backgroundColor: '#E8F1FF',
+    padding: 10,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
 
   emptyState: { alignItems: 'center', marginTop: 80 },
 
-  itemCard: { backgroundColor: '#fff', marginHorizontal: 20, marginBottom: 15, borderRadius: 15, padding: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 3 },
+  itemCard: {
+    backgroundColor: '#fff', marginHorizontal: 20, marginBottom: 15, borderRadius: 15, padding: 15,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 3,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'
+  },
+
+  // Estilos Mosaico
+  gridCard: {
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    marginBottom: 15,
+    width: '48%', // Para tener 2 columnas con espacio entre ellas
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 3,
+  },
+  gridImageContainer: {
+    width: '100%',
+    height: 120,
+    backgroundColor: '#f8f9fa',
+    borderTopLeftRadius: 15,
+    borderTopRightRadius: 15,
+    borderBottomWidth: 1,
+    borderColor: '#EAEAEA',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
   itemIcon: { justifyContent: 'center', alignItems: 'center' },
   itemTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 4 },
   itemSub: { fontSize: 14, color: '#888', marginTop: 4 },
 
   // Botón Flotante con Z-Index muy alto para que no sea bloqueado
   fab: { position: 'absolute', bottom: 30, right: 20, backgroundColor: '#007AFF', width: 65, height: 65, borderRadius: 32.5, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 10, zIndex: 1000 },
+
+  // Estilos del Nuevo Menú Flotante
+  floatingMenu: { position: 'absolute', bottom: 110, right: 20, backgroundColor: 'rgba(35, 35, 40, 0.88)', borderRadius: 20, paddingVertical: 10, paddingHorizontal: 15, width: 220, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 15 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 10 },
+  menuIcon: { marginRight: 15 },
+  menuText: { color: '#fff', fontSize: 17, fontWeight: '500' },
+  menuSeparator: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', width: '100%', marginVertical: 2 },
 
   modalBackground: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
   modalContent: { backgroundColor: '#fff', height: '85%', padding: 25, borderTopLeftRadius: 25, borderTopRightRadius: 25 },

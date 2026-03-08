@@ -8,10 +8,13 @@ import { getDownloadURL, ref } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import Pdf from 'react-native-pdf';
+import PdfViewer from '../../components/PdfViewer';
 
 import { auth, db, storage } from '../../utils/firebaseconfig';
 import { useGastos } from '../../hooks/useGastos';
+// Filtros Globales
+import FilterSortModal from '../../components/FilterSortModal';
+import { FiltrosGlobales, filtrosIniciales, aplicarFiltrosYOrden } from '../../utils/filterSortGastos';
 
 const { width, height } = Dimensions.get('window');
 
@@ -48,6 +51,9 @@ export default function EmpresaGastosScreen() {
   const [tempCategoria, setTempCategoria] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // NUEVO ESTADO PARA EL MENÚ FLOTANTE
+  const [showMenu, setShowMenu] = useState(false);
+
   // Estados de subida
   const { agregarGasto, eliminarGasto } = useGastos(auth.currentUser);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -62,6 +68,13 @@ export default function EmpresaGastosScreen() {
   // Estados para el rechazo
   const [modalRechazoVisible, setModalRechazoVisible] = useState(false);
   const [motivoRechazo, setMotivoRechazo] = useState('');
+
+  // --- VISTA LISTA / MOSAICO ---
+  const [viewMode, setViewMode] = useState<'lista' | 'mosaico'>('lista');
+
+  // --- FILTROS Y ORDEN ---
+  const [filtros, setFiltros] = useState<FiltrosGlobales>(filtrosIniciales);
+  const [showFiltros, setShowFiltros] = useState(false);
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -260,55 +273,92 @@ export default function EmpresaGastosScreen() {
   };
 
   const mostrarOpciones = () => {
-    Alert.alert("Agregar Documento", "Selecciona una opción", [
-      { text: "Cancelar", style: "cancel" }, { text: "Cámara", onPress: () => handleSelectImage(true) },
-      { text: "Galería", onPress: () => handleSelectImage(false) }, { text: "Archivo PDF", onPress: handleSelectDocument }
-    ]);
+    setShowMenu(true);
   };
 
   const gastosFiltrados = gastos.filter(g => g.estadoAprobacion === filtro || (filtro === 'Aprobado' && g.estadoAprobacion === 'Rechazado'));
 
-  const renderItem = ({ item }: { item: any }) => (
-    <TouchableOpacity style={styles.card} onPress={() => abrirDetalles(item)} activeOpacity={0.8}>
-      <View style={styles.cardHeader}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View style={styles.avatarMini}><Ionicons name="person" size={12} color="#007AFF" /></View>
-          <Text style={styles.workerName}>{item.nombreTrabajador}</Text>
-        </View>
-        <Text style={[styles.statusBadge,
-        item.estadoAprobacion === 'Pendiente' ? styles.badgePendiente :
-          item.estadoAprobacion === 'Aprobado' ? styles.badgeAprobado : styles.badgeRechazado
-        ]}>
-          {item.estadoAprobacion}
-        </Text>
-      </View>
+  const renderItem = ({ item }: { item: any }) => {
+    if (viewMode === 'mosaico') {
+      return (
+        <TouchableOpacity style={styles.gridCard} onPress={() => abrirDetalles(item)} activeOpacity={0.8}>
+          <View style={styles.gridHeader}>
+            <View style={styles.avatarMini}><Ionicons name="person" size={12} color="#007AFF" /></View>
+            <Text style={styles.workerNameGrid} numberOfLines={1}>{item.nombreTrabajador}</Text>
+          </View>
 
-      <View style={styles.cardBody}>
-        <View style={styles.itemIcon}>
-          {item.miniaturaBase64 ? (
-            <Image source={{ uri: item.miniaturaBase64 }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-          ) : (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Ionicons name="document-text" size={24} color="#ccc" /></View>
-          )}
+          <View style={styles.gridImageContainer}>
+            {item.miniaturaBase64 ? (
+              <Image source={{ uri: item.miniaturaBase64 }} style={{ width: '100%', height: '100%', borderRadius: 12 }} resizeMode="cover" />
+            ) : (
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <Ionicons name="document-text" size={30} color="#ccc" />
+              </View>
+            )}
+          </View>
+
+          <View style={{ padding: 10, flex: 1, justifyContent: 'space-between' }}>
+            <View>
+              <Text style={styles.comercioGrid} numberOfLines={2}>{item.comercio || 'Sin Comercio'}</Text>
+              <Text style={styles.detalles} numberOfLines={1}>{item.tipoDocumento} • {item.fechaDetectada}</Text>
+              <Text style={styles.montoGrid}>${(item.monto || 0).toLocaleString('es-CL')}</Text>
+            </View>
+
+            <View style={{ marginTop: 8, alignSelf: 'flex-start' }}>
+              <Text style={[styles.statusBadge,
+              item.estadoAprobacion === 'Pendiente' ? styles.badgePendiente :
+                item.estadoAprobacion === 'Aprobado' ? styles.badgeAprobado : styles.badgeRechazado
+              ]}>
+                {item.estadoAprobacion}
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      );
+    }
+
+    return (
+      <TouchableOpacity style={styles.card} onPress={() => abrirDetalles(item)} activeOpacity={0.8}>
+        <View style={styles.cardHeader}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={styles.avatarMini}><Ionicons name="person" size={12} color="#007AFF" /></View>
+            <Text style={styles.workerName}>{item.nombreTrabajador}</Text>
+          </View>
+          <Text style={[styles.statusBadge,
+          item.estadoAprobacion === 'Pendiente' ? styles.badgePendiente :
+            item.estadoAprobacion === 'Aprobado' ? styles.badgeAprobado : styles.badgeRechazado
+          ]}>
+            {item.estadoAprobacion}
+          </Text>
         </View>
 
-        <View style={{ flex: 1, marginLeft: 15 }}>
-          <Text style={styles.comercio} numberOfLines={1}>{item.comercio}</Text>
-          <Text style={styles.detalles}>{item.tipoDocumento} {item.numeroDocumento ? `N°${item.numeroDocumento}` : ''} • {item.fechaDetectada}</Text>
-          <Text style={styles.monto}>${(item.monto || 0).toLocaleString('es-CL')}</Text>
+        <View style={styles.cardBody}>
+          <View style={styles.itemIcon}>
+            {item.miniaturaBase64 ? (
+              <Image source={{ uri: item.miniaturaBase64 }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+            ) : (
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Ionicons name="document-text" size={24} color="#ccc" /></View>
+            )}
+          </View>
+
+          <View style={{ flex: 1, marginLeft: 15 }}>
+            <Text style={styles.comercio} numberOfLines={1}>{item.comercio}</Text>
+            <Text style={styles.detalles}>{item.tipoDocumento} {item.numeroDocumento ? `N°${item.numeroDocumento}` : ''} • {item.fechaDetectada}</Text>
+            <Text style={styles.monto}>${(item.monto || 0).toLocaleString('es-CL')}</Text>
+          </View>
+
+          <Ionicons name="chevron-forward" size={20} color="#ccc" />
         </View>
 
-        <Ionicons name="chevron-forward" size={20} color="#ccc" />
-      </View>
-
-      {item.estadoAprobacion === 'Pendiente' && item.estado === 'Pendiente' && (
-        <View style={styles.leyendoContainer}>
-          <ActivityIndicator size="small" color="#007AFF" />
-          <Text style={styles.leyendoText}>La IA está analizando este documento...</Text>
-        </View>
-      )}
-    </TouchableOpacity>
-  );
+        {item.estadoAprobacion === 'Pendiente' && item.estado === 'Pendiente' && (
+          <View style={styles.leyendoContainer}>
+            <ActivityIndicator size="small" color="#007AFF" />
+            <Text style={styles.leyendoText}>La IA está analizando este documento...</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -325,14 +375,34 @@ export default function EmpresaGastosScreen() {
         </TouchableOpacity>
       </View>
 
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 5 }}>
+        <TouchableOpacity
+          style={styles.btnViewMode}
+          onPress={() => setViewMode(prev => prev === 'lista' ? 'mosaico' : 'lista')}
+        >
+          <Ionicons name={viewMode === 'lista' ? 'grid-outline' : 'list-outline'} size={18} color="#007AFF" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.btnFilter}
+          onPress={() => setShowFiltros(true)}
+        >
+          <Ionicons name="funnel-outline" size={18} color="#007AFF" />
+          <Text style={styles.btnFilterText}>Filtros</Text>
+        </TouchableOpacity>
+      </View>
+
       {loading ? (
         <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 50 }} />
       ) : (
         <FlatList
+          key={viewMode}
+          numColumns={viewMode === 'mosaico' ? 2 : 1}
           style={{ flex: 1 }}
-          data={gastosFiltrados}
+          data={aplicarFiltrosYOrden(gastosFiltrados, filtros)}
           keyExtractor={item => item.id}
-          contentContainerStyle={{ paddingBottom: 20 }}
+          contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: viewMode === 'mosaico' ? 15 : 0 }}
+          columnWrapperStyle={viewMode === 'mosaico' ? { justifyContent: 'space-between' } : undefined}
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Ionicons name="checkmark-done-circle-outline" size={60} color="#ccc" />
@@ -348,6 +418,32 @@ export default function EmpresaGastosScreen() {
       <TouchableOpacity style={styles.fab} onPress={mostrarOpciones} activeOpacity={0.7}>
         <Ionicons name="add" size={35} color="white" />
       </TouchableOpacity>
+
+      {/* --- MENÚ FLOTANTE CUSTOMIZADO (NUEVO) --- */}
+      <Modal visible={showMenu} transparent={true} animationType="fade" onRequestClose={() => setShowMenu(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }} activeOpacity={1} onPress={() => setShowMenu(false)}>
+          <View style={styles.floatingMenu}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setShowMenu(false); setTimeout(() => handleSelectImage(true), 300); }}>
+              <Ionicons name="camera-outline" size={26} color="#fff" style={styles.menuIcon} />
+              <Text style={styles.menuText}>Cámara</Text>
+            </TouchableOpacity>
+
+            <View style={styles.menuSeparator} />
+
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setShowMenu(false); setTimeout(() => handleSelectImage(false), 300); }}>
+              <Ionicons name="images-outline" size={26} color="#fff" style={styles.menuIcon} />
+              <Text style={styles.menuText}>Galería</Text>
+            </TouchableOpacity>
+
+            <View style={styles.menuSeparator} />
+
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setShowMenu(false); setTimeout(() => handleSelectDocument(), 300); }}>
+              <Ionicons name="document-text-outline" size={26} color="#fff" style={styles.menuIcon} />
+              <Text style={styles.menuText}>Documento PDF</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* --- MODAL UPLOAD --- */}
       <Modal visible={showConfirm} animationType="slide" transparent={false}>
@@ -570,12 +666,7 @@ export default function EmpresaGastosScreen() {
                 </TouchableOpacity>
                 {selectedIsPdf ? (
                   <View style={{ flex: 1, width: width, height: height, marginTop: 100, justifyContent: 'center', alignItems: 'center' }}>
-                    <Ionicons name="document-text" size={80} color="white" />
-                    <Text style={{ marginTop: 20, textAlign: 'center', color: 'white', fontSize: 18 }}>Este es un documento PDF</Text>
-                    <TouchableOpacity onPress={() => Linking.openURL(selectedDocumentUrl)} style={{ marginTop: 30, backgroundColor: '#007AFF', paddingHorizontal: 30, paddingVertical: 15, borderRadius: 25, flexDirection: 'row', alignItems: 'center' }}>
-                      <Ionicons name="open-outline" size={24} color="white" style={{ marginRight: 10 }} />
-                      <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>Ver PDF Completo Aquí</Text>
-                    </TouchableOpacity>
+                    <PdfViewer uri={selectedDocumentUrl} style={{ flex: 1, width: width }} />
                   </View>
                 ) : (
                   <Image source={{ uri: selectedDocumentUrl }} style={{ flex: 1, width: '100%', height: '100%' }} resizeMode="contain" />
@@ -624,25 +715,83 @@ export default function EmpresaGastosScreen() {
         </View>
       </Modal>
 
+      {/* --- MODAL DE FILTROS --- */}
+      <FilterSortModal
+        visible={showFiltros}
+        onClose={() => setShowFiltros(false)}
+        filtrosActuales={filtros}
+        onApply={(nuevosFiltros) => setFiltros(nuevosFiltros)}
+        estadosDisponibles={['Todos', 'Aprobado', 'Rechazado', 'Pendiente']}
+      />
+
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f4f6f9' },
-  header: { padding: 20, paddingTop: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#eee' },
-  headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#333' },
+  header: { paddingHorizontal: 20, paddingTop: 15, paddingBottom: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#eee' },
+  headerTitle: { fontSize: 26, fontWeight: 'bold', color: '#101A26' },
 
-  tabsContainer: { flexDirection: 'row', padding: 15, backgroundColor: '#fff', marginBottom: 10 },
-  tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabsContainer: { flexDirection: 'row', paddingHorizontal: 15, paddingTop: 5, paddingBottom: 5, backgroundColor: '#fff', marginBottom: 5 },
+  tab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
   tabActive: { borderBottomColor: '#007AFF' },
-  tabText: { fontSize: 15, fontWeight: '600', color: '#999' },
+  tabText: { fontSize: 13, fontWeight: '600', color: '#999' },
   tabTextActive: { color: '#007AFF' },
+
+  btnFilter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F1FF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
+  },
+  btnFilterText: {
+    color: '#007AFF',
+    fontWeight: '600',
+    fontSize: 13
+  },
+  btnViewMode: {
+    backgroundColor: '#E8F1FF',
+    padding: 0,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 32,
+    height: 32
+  },
 
   card: { backgroundColor: '#fff', marginHorizontal: 15, marginBottom: 15, borderRadius: 15, padding: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 3 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', paddingBottom: 10 },
   avatarMini: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#E8F1FF', justifyContent: 'center', alignItems: 'center', marginRight: 8 },
-  workerName: { fontSize: 14, fontWeight: '600', color: '#555' },
+
+  // Estilos Mosaico
+  gridCard: {
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    marginBottom: 15,
+    width: '48%', // 2 columnas con espacio
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 3,
+  },
+  gridHeader: {
+    flexDirection: 'row', alignItems: 'center', padding: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0'
+  },
+  workerNameGrid: { fontSize: 13, fontWeight: 'bold', color: '#333', flex: 1 },
+  gridImageContainer: {
+    width: '100%',
+    height: 100,
+    backgroundColor: '#f8f9fa',
+    borderBottomWidth: 1,
+    borderColor: '#EAEAEA',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  comercioGrid: { fontSize: 14, fontWeight: 'bold', color: '#444', marginBottom: 2 },
+  montoGrid: { fontSize: 16, fontWeight: 'bold', color: '#007AFF', marginTop: 4 },
+
+  workerName: { fontSize: 15, fontWeight: 'bold', color: '#333' },
 
   statusBadge: { fontSize: 12, fontWeight: 'bold', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, overflow: 'hidden' },
   badgePendiente: { backgroundColor: '#FFF3CD', color: '#FF8800' },
@@ -663,6 +812,13 @@ const styles = StyleSheet.create({
   emptySubText: { fontSize: 14, color: '#999', marginTop: 5 },
 
   fab: { position: 'absolute', bottom: 30, right: 20, backgroundColor: '#007AFF', width: 65, height: 65, borderRadius: 32.5, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 10, zIndex: 1000 },
+
+  // Estilos del Nuevo Menú Flotante
+  floatingMenu: { position: 'absolute', bottom: 110, right: 20, backgroundColor: 'rgba(35, 35, 40, 0.88)', borderRadius: 20, paddingVertical: 10, paddingHorizontal: 15, width: 220, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 15 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 10 },
+  menuIcon: { marginRight: 15 },
+  menuText: { color: '#fff', fontSize: 17, fontWeight: '500' },
+  menuSeparator: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', width: '100%', marginVertical: 2 },
 
   cameraContainer: { flex: 1, backgroundColor: 'black' },
   controls: { flexDirection: 'row', justifyContent: 'space-around', padding: 30, backgroundColor: 'black' },
